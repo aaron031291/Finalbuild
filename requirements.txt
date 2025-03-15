@@ -1,7 +1,0 @@
-watchdog
-transformers
-huggingface_hub
-openai
-pandas
-numpy
-requests

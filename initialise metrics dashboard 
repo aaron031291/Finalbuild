@@ -1,2 +1,0 @@
-const metricsDashboard = new BlockchainMetricsDashboard(system, blockchain, config);
-await metricsDashboard.initialize();

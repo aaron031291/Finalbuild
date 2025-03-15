@@ -1,8 +1,0 @@
-# Check if port is open
-netstat -an | grep 3000
-
-# Check firewall rules
-iptables -L
-
-# Allow port in firewall
-iptables -A INPUT -p tcp --dport 3000 -j ACCEPT

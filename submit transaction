@@ -1,8 +1,0 @@
-const result = await integration.submitTransaction({
-  sender: "sender-address",
-  recipient: "recipient-address",
-  amount: 1.0,
-  fee: 0.001,
-  type: "transfer",
-  metadata: {}
-});

@@ -1,1 +1,0 @@
-const alerts = metricsDashboard.getAlerts();
