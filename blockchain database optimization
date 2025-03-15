@@ -1,0 +1,28 @@
+// Optimize database
+async function optimizeDatabase() {
+  // Check if using MongoDB
+  if (blockchain.storage.db) {
+    try {
+      // Create indexes
+      await blockchain.storage.db.collection('blockchain').createIndex({ id: 1 });
+      await blockchain.storage.db.collection('transactions').createIndex({ id: 1 });
+      await blockchain.storage.db.collection('transactions').createIndex({ status: 1 });
+      
+      console.log('Database indexes created');
+      
+      // Run database stats
+      const stats = await blockchain.storage.db.stats();
+      console.log('Database Stats:', stats);
+      
+      // Check if compaction needed
+      if (stats.storageSize > stats.dataSize * 1.5) {
+        console.log('Database compaction recommended');
+      }
+    } catch (error) {
+      console.error(`Database optimization error: ${error.message}`);
+    }
+  }
+}
+
+// Run optimization on startup
+optimizeDatabase().catch(console.error);

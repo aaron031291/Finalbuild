@@ -1,0 +1,22 @@
+// Start CPU profiling
+const fs = require('fs');
+const profiler = require('v8-profiler-next');
+
+function startProfiling() {
+  profiler.startProfiling('blockchain-profile');
+  
+  // Stop profiling after 30 seconds
+  setTimeout(() => {
+    const profile = profiler.stopProfiling('blockchain-profile');
+    
+    // Save profile to file
+    profile.export((error, result) => {
+      fs.writeFileSync('blockchain-profile.cpuprofile', result);
+      profile.delete();
+      console.log('CPU profile saved to blockchain-profile.cpuprofile');
+    });
+  }, 30000);
+}
+
+// Start profiling
+startProfiling();

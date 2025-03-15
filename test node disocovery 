@@ -1,0 +1,11 @@
+// Manually register a node
+blockchain.registerNode('http://node1.example.com:3000');
+
+// Check if node was added
+console.log('Nodes:', blockchain.nodes);
+
+// Test connection to node
+fetch('http://node1.example.com:3000/status')
+  .then(response => response.json())
+  .then(data => console.log('Node Status:', data))
+  .catch(error => console.error('Node Connection Error:', error));

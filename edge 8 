@@ -1,0 +1,2750 @@
+/**
+ * EdgeNativeUMaaS Performance Benchmark
+ * 
+ * This file provides comprehensive performance testing and benchmarking
+ * capabilities for the EdgeNativeUMaaS system. It measures various aspects
+ * of system performance including throughput, latency, resource utilization,
+ * and scalability under different load conditions.
+ */
+
+class PerformanceBenchmark {
+  constructor(config = {}) {
+    this.id = config.id || `benchmark-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    this.name = config.name || "EdgeNativeUMaaS Performance Benchmark";
+    this.description = config.description || "Comprehensive performance testing suite";
+    
+    // System reference
+    this.edgeNativeSystem = null;
+    
+    // Benchmark state
+    this.isInitialized = false;
+    this.isRunning = false;
+    this.startTime = null;
+    this.endTime = null;
+    
+    // Test suites
+    this.testSuites = new Map();
+    
+    // Results storage
+    this.results = new Map();
+    this.aggregatedResults = null;
+    this.baselineResults = null;
+    
+    // Configuration
+    this.config = {
+      // General settings
+      autoRun: config.autoRun !== false,
+      logLevel: config.logLevel || 'info',
+      parallelTests: config.parallelTests !== false,
+      maxConcurrentTests: config.maxConcurrentTests || 5,
+      
+      // Test parameters
+      iterations: config.iterations || 3,
+      warmupIterations: config.warmupIterations || 1,
+      cooldownBetweenTests: config.cooldownBetweenTests || 2000, // ms
+      
+      // Load testing
+      maxVirtualUsers: config.maxVirtualUsers || 1000,
+      rampUpTime: config.rampUpTime || 30, // seconds
+      steadyStateTime: config.steadyStateTime || 60, // seconds
+      rampDownTime: config.rampDownTime || 30, // seconds
+      
+      // Resource monitoring
+      monitoringInterval: config.monitoringInterval || 1000, // ms
+      resourceMetrics: config.resourceMetrics || ['cpu', 'memory', 'network', 'disk'],
+      
+      // Thresholds
+      thresholds: config.thresholds || {
+        latencyP95: 500, // ms
+        latencyP99: 1000, // ms
+        throughput: 1000, // ops/sec
+        errorRate: 0.01, // 1%
+        cpuUtilization: 0.8, // 80%
+        memoryUtilization: 0.8 // 80%
+      },
+      
+      ...config.benchmarkConfig
+    };
+    
+    // Logging
+    this.logSystem = new LogSystem(this.config.logLevel);
+    
+    // Metrics collection
+    this.metrics = new MetricsCollector();
+    
+    // Resource monitor
+    this.resourceMonitor = new ResourceMonitor(this.config.monitoringInterval);
+    
+    // Load generator
+    this.loadGenerator = new LoadGenerator({
+      maxVirtualUsers: this.config.maxVirtualUsers,
+      rampUpTime: this.config.rampUpTime,
+      steadyStateTime: this.config.steadyStateTime,
+      rampDownTime: this.config.rampDownTime
+    });
+  }
+  
+  async initialize(edgeNativeSystem) {
+    this.logSystem.info(`Initializing ${this.name}`);
+    
+    try {
+      // Store reference to the edge native system
+      if (edgeNativeSystem) {
+        this.edgeNativeSystem = edgeNativeSystem;
+      } else {
+        throw new Error("EdgeNativeUniversalSystem reference is required for benchmark initialization");
+      }
+      
+      // Initialize metrics collection
+      await this.metrics.initialize();
+      
+      // Initialize resource monitor
+      await this.resourceMonitor.initialize();
+      
+      // Initialize load generator
+      await this.loadGenerator.initialize();
+      
+      // Register standard test suites
+      await this.registerStandardTestSuites();
+      
+      this.isInitialized = true;
+      this.logSystem.info(`${this.name} initialized successfully`);
+      
+      // Auto-run benchmark if configured
+      if (this.config.autoRun) {
+        await this.runBenchmark();
+      }
+      
+      return true;
+    } catch (error) {
+      this.logSystem.error(`Benchmark initialization failed: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async registerStandardTestSuites() {
+    this.logSystem.debug("Registering standard test suites...");
+    
+    // Core system performance test suite
+    await this.registerTestSuite({
+      id: 'core-performance',
+      name: 'Core System Performance',
+      description: 'Tests the performance of core system operations',
+      tests: [
+        {
+          id: 'system-initialization',
+          name: 'System Initialization',
+          description: 'Measures the time to initialize the system',
+          testFunction: this.testSystemInitialization.bind(this)
+        },
+        {
+          id: 'system-activation',
+          name: 'System Activation',
+          description: 'Measures the time to activate the system',
+          testFunction: this.testSystemActivation.bind(this)
+        },
+        {
+          id: 'component-registration',
+          name: 'Component Registration',
+          description: 'Measures the time to register components',
+          testFunction: this.testComponentRegistration.bind(this)
+        }
+      ]
+    });
+    
+    // Data highway performance test suite
+    await this.registerTestSuite({
+      id: 'data-highway-performance',
+      name: 'Data Highway Performance',
+      description: 'Tests the performance of the data highway',
+      tests: [
+        {
+          id: 'data-flow-creation',
+          name: 'Data Flow Creation',
+          description: 'Measures the time to create data flows',
+          testFunction: this.testDataFlowCreation.bind(this)
+        },
+        {
+          id: 'data-transmission',
+          name: 'Data Transmission',
+          description: 'Measures throughput and latency of data transmission',
+          testFunction: this.testDataTransmission.bind(this)
+        },
+        {
+          id: 'data-processing',
+          name: 'Data Processing',
+          description: 'Measures the performance of data processors',
+          testFunction: this.testDataProcessing.bind(this)
+        }
+      ]
+    });
+    
+    // Memory system performance test suite
+    await this.registerTestSuite({
+      id: 'memory-system-performance',
+      name: 'Memory System Performance',
+      description: 'Tests the performance of the universal memory system',
+      tests: [
+        {
+          id: 'memory-allocation',
+          name: 'Memory Allocation',
+          description: 'Measures the time to allocate memory',
+          testFunction: this.testMemoryAllocation.bind(this)
+        },
+        {
+          id: 'memory-access',
+          name: 'Memory Access',
+          description: 'Measures the latency of memory access operations',
+          testFunction: this.testMemoryAccess.bind(this)
+        },
+        {
+          id: 'memory-persistence',
+          name: 'Memory Persistence',
+          description: 'Measures the performance of memory persistence operations',
+          testFunction: this.testMemoryPersistence.bind(this)
+        }
+      ]
+    });
+    
+    // Security system performance test suite
+    await this.registerTestSuite({
+      id: 'security-system-performance',
+      name: 'Security System Performance',
+      description: 'Tests the performance of the security system',
+      tests: [
+        {
+          id: 'authentication-performance',
+          name: 'Authentication Performance',
+          description: 'Measures the performance of authentication operations',
+          testFunction: this.testAuthenticationPerformance.bind(this)
+        },
+        {
+          id: 'encryption-performance',
+          name: 'Encryption Performance',
+          description: 'Measures the performance of encryption/decryption operations',
+          testFunction: this.testEncryptionPerformance.bind(this)
+        },
+        {
+          id: 'security-checks',
+          name: 'Security Checks',
+          description: 'Measures the performance impact of security checks',
+          testFunction: this.testSecurityChecks.bind(this)
+        }
+      ]
+    });
+    
+    // Scalability test suite
+    await this.registerTestSuite({
+      id: 'scalability',
+      name: 'System Scalability',
+      description: 'Tests the scalability of the system under increasing load',
+      tests: [
+        {
+          id: 'concurrent-operations',
+          name: 'Concurrent Operations',
+          description: 'Measures system performance with concurrent operations',
+          testFunction: this.testConcurrentOperations.bind(this)
+        },
+        {
+          id: 'load-scaling',
+          name: 'Load Scaling',
+          description: 'Measures how system performance scales with increasing load',
+          testFunction: this.testLoadScaling.bind(this)
+        },
+        {
+          id: 'resource-scaling',
+          name: 'Resource Scaling',
+          description: 'Measures how system performance scales with available resources',
+          testFunction: this.testResourceScaling.bind(this)
+        }
+      ]
+    });
+    
+    // Integration performance test suite
+    await this.registerTestSuite({
+      id: 'integration-performance',
+      name: 'Integration Performance',
+      description: 'Tests the performance of system integrations',
+      tests: [
+        {
+          id: 'protocol-adapter-performance',
+          name: 'Protocol Adapter Performance',
+          description: 'Measures the performance of protocol adapters',
+          testFunction: this.testProtocolAdapterPerformance.bind(this)
+        },
+        {
+          id: 'system-connector-performance',
+          name: 'System Connector Performance',
+          description: 'Measures the performance of system connectors',
+          testFunction: this.testSystemConnectorPerformance.bind(this)
+        },
+        {
+          id: 'data-transformation',
+          name: 'Data Transformation',
+          description: 'Measures the performance of data transformation operations',
+          testFunction: this.testDataTransformation.bind(this)
+        }
+      ]
+    });
+    
+    // End-to-end performance test suite
+    await this.registerTestSuite({
+      id: 'end-to-end-performance',
+      name: 'End-to-End Performance',
+      description: 'Tests the end-to-end performance of the system',
+      tests: [
+        {
+          id: 'e2e-request-response',
+          name: 'E2E Request-Response',
+          description: 'Measures end-to-end request-response performance',
+          testFunction: this.testE2ERequestResponse.bind(this)
+        },
+        {
+          id: 'e2e-data-pipeline',
+          name: 'E2E Data Pipeline',
+          description: 'Measures end-to-end data pipeline performance',
+          testFunction: this.testE2EDataPipeline.bind(this)
+        },
+        {
+          id: 'e2e-transaction',
+          name: 'E2E Transaction',
+          description: 'Measures end-to-end transaction performance',
+          testFunction: this.testE2ETransaction.bind(this)
+        }
+      ]
+    });
+    
+    this.logSystem.info(`Registered ${this.testSuites.size} standard test suites`);
+    
+    return true;
+  }
+  
+  async registerTestSuite(testSuite) {
+    this.logSystem.debug(`Registering test suite: ${testSuite.name}`);
+    
+    // Validate test suite
+    if (!testSuite.id || !testSuite.name || !testSuite.tests) {
+      throw new Error("Invalid test suite: must have id, name, and tests");
+    }
+    
+    // Add test suite
+    this.testSuites.set(testSuite.id, testSuite);
+    
+    return true;
+  }
+  
+  async runBenchmark(options = {}) {
+    if (!this.isInitialized) {
+      throw new Error("Benchmark must be initialized before running");
+    }
+    
+    if (this.isRunning) {
+      throw new Error("Benchmark is already running");
+    }
+    
+    const suiteIds = options.suites || Array.from(this.testSuites.keys());
+    const iterations = options.iterations || this.config.iterations;
+    const warmupIterations = options.warmupIterations || this.config.warmupIterations;
+    
+    this.logSystem.info(`Starting benchmark with ${suiteIds.length} test suites, ${iterations} iterations, ${warmupIterations} warmup iterations`);
+    
+    this.isRunning = true;
+    this.startTime = Date.now();
+    this.results.clear();
+    this.aggregatedResults = null;
+    
+    try {
+      // Start resource monitoring
+      await this.resourceMonitor.start();
+      
+      // Run each test suite
+      for (const suiteId of suiteIds) {
+        const suite = this.testSuites.get(suiteId);
+        
+        if (!suite) {
+          this.logSystem.warn(`Test suite not found: ${suiteId}`);
+          continue;
+        }
+        
+        await this.runTestSuite(suite, iterations, warmupIterations);
+      }
+      
+      // Stop resource monitoring
+      await this.resourceMonitor.stop();
+      
+      // Aggregate results
+      this.aggregatedResults = this.aggregateResults();
+      
+      // Compare with baseline if available
+      if (this.baselineResults) {
+        this.compareWithBaseline();
+      }
+      
+      this.isRunning = false;
+      this.endTime = Date.now();
+      
+      this.logSystem.info(`Benchmark completed in ${(this.endTime - this.startTime) / 1000} seconds`);
+      
+      return this.aggregatedResults;
+    } catch (error) {
+      this.isRunning = false;
+      this.endTime = Date.now();
+      
+      this.logSystem.error(`Benchmark failed: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async runTestSuite(suite, iterations, warmupIterations) {
+    this.logSystem.info(`Running test suite: ${suite.name}`);
+    
+    const suiteResults = {
+      id: suite.id,
+      name: suite.name,
+      description: suite.description,
+      startTime: Date.now(),
+      endTime: null,
+      tests: [],
+      summary: {}
+    };
+    
+    try {
+      // Run each test in the suite
+      for (const test of suite.tests) {
+        const testResult = await this.runTest(test, suite.id, iterations, warmupIterations);
+        suiteResults.tests.push(testResult);
+      }
+      
+      suiteResults.endTime = Date.now();
+      suiteResults.duration = suiteResults.endTime - suiteResults.startTime;
+      
+      // Calculate suite summary
+      suiteResults.summary = this.calculateTestSuiteSummary(suiteResults);
+      
+      // Store results
+      this.results.set(suite.id, suiteResults);
+      
+      this.logSystem.info(`Test suite completed: ${suite.name} in ${suiteResults.duration}ms`);
+      
+      return suiteResults;
+    } catch (error) {
+      this.logSystem.error(`Test suite failed: ${suite.name} - ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async runTest(test, suiteId, iterations, warmupIterations) {
+    this.logSystem.debug(`Running test: ${test.name}`);
+    
+    const testResult = {
+      id: test.id,
+      name: test.name,
+      description: test.description,
+      suiteId,
+      startTime: Date.now(),
+      endTime: null,
+      warmupIterations,
+      iterations,
+      iterationResults: [],
+      summary: {}
+    };
+    
+    try {
+      // Run warmup iterations
+      if (warmupIterations > 0) {
+        this.logSystem.debug(`Running ${warmupIterations} warmup iterations for test: ${test.name}`);
+        
+        for (let i = 0; i < warmupIterations; i++) {
+          await test.testFunction({
+            iteration: i,
+            isWarmup: true
+          });
+        }
+      }
+      
+      // Run test iterations
+      for (let i = 0; i < iterations; i++) {
+        this.logSystem.debug(`Running iteration ${i + 1}/${iterations} for test: ${test.name}`);
+        
+        const iterationStartTime = Date.now();
+        const iterationResult = await test.testFunction({
+          iteration: i,
+          isWarmup: false
+        });
+        const iterationEndTime = Date.now();
+        
+        testResult.iterationResults.push({
+          iteration: i,
+          startTime: iterationStartTime,
+          endTime: iterationEndTime,
+          duration: iterationEndTime - iterationStartTime,
+          ...iterationResult
+        });
+        
+        // Add cooldown between iterations if configured
+        if (i < iterations - 1 && this.config.cooldownBetweenTests > 0) {
+          await new Promise(resolve => setTimeout(resolve, this.config.cooldownBetweenTests));
+        }
+      }
+      
+      testResult.endTime = Date.now();
+      testResult.duration = testResult.endTime - testResult.startTime;
+      
+      // Calculate test summary
+      testResult.summary = this.calculateTestSummary(testResult);
+      
+      this.logSystem.debug(`Test completed: ${test.name} in ${testResult.duration}ms`);
+      
+      return testResult;
+    } catch (error) {
+      this.logSystem.error(`Test failed: ${test.name} - ${error.message}`);
+      
+      testResult.endTime = Date.now();
+      testResult.duration = testResult.endTime - testResult.startTime;
+      testResult.error = {
+        message: error.message,
+        stack: error.stack
+      };
+      
+      return testResult;
+    }
+  }
+  
+  calculateTestSummary(testResult) {
+    // Skip if test had an error
+    if (testResult.error) {
+      return {
+        status: 'failed',
+        error: testResult.error.message
+      };
+    }
+    
+    // Skip if no iteration results
+    if (!testResult.iterationResults || testResult.iterationResults.length === 0) {
+      return {
+        status: 'no-data'
+      };
+    }
+    
+    // Calculate summary statistics
+    const durations = testResult.iterationResults.map(r => r.duration);
+    const throughputs = testResult.iterationResults.map(r => r.throughput).filter(Boolean);
+    const latencies = testResult.iterationResults.map(r => r.latency).filter(Boolean);
+    const errorRates = testResult.iterationResults.map(r => r.errorRate).filter(n => n !== undefined);
+    
+    // Calculate percentiles for latency
+    let latencyP50 = null;
+    let latencyP95 = null;
+    let latencyP99 = null;
+    
+    if (latencies.length > 0) {
+      latencies.sort((a, b) => a - b);
+      latencyP50 = this.calculatePercentile(latencies, 50);
+      latencyP95 = this.calculatePercentile(latencies, 95);
+      latencyP99 = this.calculatePercentile(latencies, 99);
+    }
+    
+    return {
+      status: 'success',
+      iterations: testResult.iterationResults.length,
+      duration: {
+        total: testResult.duration,
+        mean: this.calculateMean(durations),
+        min: Math.min(...durations),
+        max: Math.max(...durations),
+        stdDev: this.calculateStdDev(durations)
+      },
+      throughput: throughputs.length > 0 ? {
+        mean: this.calculateMean(throughputs),
+        min: Math.min(...throughputs),
+        max: Math.max(...throughputs),
+        stdDev: this.calculateStdDev(throughputs)
+      } : null,
+      latency: latencies.length > 0 ? {
+        mean: this.calculateMean(latencies),
+        min: Math.min(...latencies),
+        max: Math.max(...latencies),
+        stdDev: this.calculateStdDev(latencies),
+        p50: latencyP50,
+        p95: latencyP95,
+        p99: latencyP99
+      } : null,
+      errorRate: errorRates.length > 0 ? {
+        mean: this.calculateMean(errorRates),
+        min: Math.min(...errorRates),
+        max: Math.max(...errorRates)
+      } : null
+    };
+  }
+  
+  calculateTestSuiteSummary(suiteResults) {
+    // Skip if no test results
+    if (!suiteResults.tests || suiteResults.tests.length === 0) {
+      return {
+        status: 'no-data'
+      };
+    }
+    
+    // Count tests by status
+    const testsByStatus = {
+      success: 0,
+      failed: 0,
+      'no-data': 0
+    };
+    
+    for (const test of suiteResults.tests) {
+      const status = test.summary.status || 'no-data';
+      testsByStatus[status] = (testsByStatus[status] || 0) + 1;
+    }
+    
+    // Calculate overall status
+    let status = 'success';
+    if (testsByStatus.failed > 0) {
+      status = 'failed';
+    } else if (testsByStatus.success === 0) {
+      status = 'no-data';
+    }
+    
+    // Calculate aggregate metrics
+    const throughputs = [];
+    const latencies = [];
+    const errorRates = [];
+    
+    for (const test of suiteResults.tests) {
+      if (test.summary.throughput) {
+        throughputs.push(test.summary.throughput.mean);
+      }
+      
+      if (test.summary.latency) {
+        latencies.push(test.summary.latency.mean);
+      }
+      
+      if (test.summary.errorRate) {
+        errorRates.push(test.summary.errorRate.mean);
+      }
+    }
+    
+    return {
+      status,
+      testCount: suiteResults.tests.length,
+      testsByStatus,
+      duration: suiteResults.duration,
+      throughput: throughputs.length > 0 ? {
+        mean: this.calculateMean(throughputs),
+        min: Math.min(...throughputs),
+        max: Math.max(...throughputs)
+      } : null,
+      latency: latencies.length > 0 ? {
+        mean: this.calculateMean(latencies),
+        min: Math.min(...latencies),
+        max: Math.max(...latencies)
+      } : null,
+      errorRate: errorRates.length > 0 ? {
+        mean: this.calculateMean(errorRates),
+        min: Math.min(...errorRates),
+        max: Math.max(...errorRates)
+      } : null
+    };
+  }
+  
+  aggregateResults() {
+    if (this.results.size === 0) {
+      return {
+        status: 'no-data',
+        timestamp: Date.now()
+      };
+    }
+    
+    // Count suites by status
+    const suitesByStatus = {
+      success: 0,
+      failed: 0,
+      'no-data': 0
+    };
+    
+    for (const suite of this.results.values()) {
+      const status = suite.summary.status || 'no-data';
+      suitesByStatus[status] = (suitesByStatus[status] || 0) + 1;
+    }
+    
+    // Calculate overall status
+    let status = 'success';
+    if (suitesByStatus.failed > 0) {
+      status = 'failed';
+    } else if (suitesByStatus.success === 0) {
+      status = 'no-data';
+    }
+    
+    // Calculate aggregate metrics
+    const throughputs = [];
+    const latencies = [];
+    const errorRates = [];
+    
+    for (const suite of this.results.values()) {
+      if (suite.summary.throughput) {
+        throughputs.push(suite.summary.throughput.mean);
+      }
+      
+      if (suite.summary.latency) {
+        latencies.push(suite.summary.latency.mean);
+      }
+      
+      if (suite.summary.errorRate) {
+        errorRates.push(suite.summary.errorRate.mean);
+      }
+    }
+    
+    // Get resource metrics
+    const resourceMetrics = this.resourceMonitor.getMetrics();
+    
+    return {
+      status,
+      timestamp: Date.now(),
+      duration: this.endTime - this.startTime,
+      suiteCount: this.results.size,
+      suitesByStatus,
+      throughput: throughputs.length > 0 ? {
+        mean: this.calculateMean(throughputs),
+        min: Math.min(...throughputs),
+        max: Math.max(...throughputs)
+      } : null,
+      latency: latencies.length > 0 ? {
+        mean: this.calculateMean(latencies),
+        min: Math.min(...latencies),
+        max: Math.max(...latencies)
+      } : null,
+      errorRate: errorRates.length > 0 ? {
+        mean: this.calculateMean(errorRates),
+        min: Math.min(...errorRates),
+        max: Math.max(...errorRates)
+      } : null,
+      resourceMetrics,
+      thresholds: this.evaluateThresholds()
+    };
+  }
+  
+  evaluateThresholds() {
+    if (!this.aggregatedResults) {
+      return null;
+    }
+    
+    const thresholdResults = {};
+    
+    // Check latency thresholds
+    if (this.config.thresholds.latencyP95 && this.aggregatedResults.latency) {
+      const latencyP95 = this.aggregatedResults.latency.p95 || this.aggregatedResults.latency.max;
+      thresholdResults.latencyP95 = {
+        threshold: this.config.thresholds.latencyP95,
+        actual: latencyP95,
+        passed: latencyP95 <= this.config.thresholds.latencyP95
+      };
+    }
+    
+    if (this.config.thresholds.latencyP99 && this.aggregatedResults.latency) {
+      const latencyP99 = this.aggregatedResults.latency.p99 || this.aggregatedResults.latency.max;
+      thresholdResults.latencyP99 = {
+        threshold: this.config.thresholds.latencyP99,
+        actual: latencyP99,
+        passed: latencyP99 <= this.config.thresholds.latencyP99
+      };
+    }
+    
+    // Check throughput threshold
+    if (this.config.thresholds.throughput && this.aggregatedResults.throughput) {
+      thresholdResults.throughput = {
+        threshold: this.config.thresholds.throughput,
+        actual: this.aggregatedResults.throughput.mean,
+        passed: this.aggregatedResults.throughput.mean >= this.config.thresholds.throughput
+      };
+    }
+    
+    // Check error rate threshold
+    if (this.config.thresholds.errorRate && this.aggregatedResults.errorRate) {
+      thresholdResults.errorRate = {
+        threshold: this.config.thresholds.errorRate,
+        actual: this.aggregatedResults.errorRate.mean,
+        passed: this.aggregatedResults.errorRate.mean <= this.config.thresholds.errorRate
+      };
+    }
+    
+    // Check resource utilization thresholds
+    if (this.config.thresholds.cpuUtilization && this.aggregatedResults.resourceMetrics) {
+      thresholdResults.cpuUtilization = {
+        threshold: this.config.thresholds.cpuUtilization,
+        actual: this.aggregatedResults.resourceMetrics.cpu.mean,
+        passed: this.aggregatedResults.resourceMetrics.cpu.mean <= this.config.thresholds.cpuUtilization
+      };
+    }
+    
+    if (this.config.thresholds.memoryUtilization && this.aggregatedResults.resourceMetrics) {
+      thresholdResults.memoryUtilization = {
+        threshold: this.config.thresholds.memoryUtilization,
+        actual: this.aggregatedResults.resourceMetrics.memory.mean,
+        passed: this.aggregatedResults.resourceMetrics.memory.mean <= this.config.thresholds.memoryUtilization
+      };
+    }
+    
+    // Calculate overall threshold status
+    const thresholdsPassed = Object.values(thresholdResults).every(result => result.passed);
+    
+    return {
+      passed: thresholdsPassed,
+      results: thresholdResults
+    };
+  }
+  
+  setBaseline(results) {
+    this.baselineResults = results;
+    this.logSystem.info("Baseline results set");
+    return true;
+  }
+  
+  compareWithBaseline() {
+    if (!this.baselineResults || !this.aggregatedResults) {
+      return null;
+    }
+    
+    const comparison = {
+      timestamp: Date.now(),
+      baseline: {
+        timestamp: this.baselineResults.timestamp
+      },
+      current: {
+        timestamp: this.aggregatedResults.timestamp
+      },
+      metrics: {}
+    };
+    
+    // Compare throughput
+    if (this.baselineResults.throughput && this.aggregatedResults.throughput) {
+      const baselineThroughput = this.baselineResults.throughput.mean;
+      const currentThroughput = this.aggregatedResults.throughput.mean;
+      const throughputDiff = currentThroughput - baselineThroughput;
+      const throughputDiffPercent = (throughputDiff / baselineThroughput) * 100;
+      
+      comparison.metrics.throughput = {
+        baseline: baselineThroughput,
+        current: currentThroughput,
+        diff: throughputDiff,
+        diffPercent: throughputDiffPercent,
+        improved: throughputDiff > 0
+      };
+    }
+    
+    // Compare latency
+    if (this.baselineResults.latency && this.aggregatedResults.latency) {
+      const baselineLatency = this.baselineResults.latency.mean;
+      const currentLatency = this.aggregatedResults.latency.mean;
+      const latencyDiff = currentLatency - baselineLatency;
+      const latencyDiffPercent = (latencyDiff / baselineLatency) * 100;
+      
+      comparison.metrics.latency = {
+        baseline: baselineLatency,
+        current: currentLatency,
+        diff: latencyDiff,
+        diffPercent: latencyDiffPercent,
+        improved: latencyDiff < 0 // Lower latency is better
+      };
+    }
+    
+    // Compare error rate
+    if (this.baselineResults.errorRate && this.aggregatedResults.errorRate) {
+      const baselineErrorRate = this.baselineResults.errorRate.mean;
+      const currentErrorRate = this.aggregatedResults.errorRate.mean;
+      const errorRateDiff = currentErrorRate - baselineErrorRate;
+      const errorRateDiffPercent = (errorRateDiff / baselineErrorRate) * 100;
+      
+      comparison.metrics.errorRate = {
+        baseline: baselineErrorRate,
+        current: currentErrorRate,
+        diff: errorRateDiff,
+        diffPercent: errorRateDiffPercent,
+        improved: errorRateDiff < 0 // Lower error rate is better
+      };
+    }
+    
+    // Compare resource utilization
+    if (this.baselineResults.resourceMetrics && this.aggregatedResults.resourceMetrics) {
+      // Compare CPU utilization
+      if (this.baselineResults.resourceMetrics.cpu && this.aggregatedResults.resourceMetrics.cpu) {
+        const baselineCpu = this.baselineResults.resourceMetrics.cpu.mean;
+        const currentCpu = this.aggregatedResults.resourceMetrics.cpu.mean;
+        const cpuDiff = currentCpu - baselineCpu;
+        const cpuDiffPercent = (cpuDiff / baselineCpu) * 100;
+        
+        comparison.metrics.cpuUtilization = {
+          baseline: baselineCpu,
+          current: currentCpu,
+          diff: cpuDiff,
+          diffPercent: cpuDiffPercent,
+          improved: cpuDiff < 0 // Lower CPU utilization is better
+        };
+      }
+      
+      // Compare memory utilization
+      if (this.baselineResults.resourceMetrics.memory && this.aggregatedResults.resourceMetrics.memory) {
+        const baselineMemory = this.baselineResults.resourceMetrics.memory.mean;
+        const currentMemory = this.aggregatedResults.resourceMetrics.memory.mean;
+        const memoryDiff = currentMemory - baselineMemory;
+        const memoryDiffPercent = (memoryDiff / baselineMemory) * 100;
+        
+        comparison.metrics.memoryUtilization = {
+          baseline: baselineMemory,
+          current: currentMemory,
+          diff: memoryDiff,
+          diffPercent: memoryDiffPercent,
+          improved: memoryDiff < 0 // Lower memory utilization is better
+        };
+      }
+    }
+    
+    // Calculate overall improvement
+    const improvements = Object.values(comparison.metrics).filter(metric => metric.improved).length;
+    const regressions = Object.values(comparison.metrics).filter(metric => !metric.improved).length;
+    
+    comparison.overall = {
+      improvements,
+      regressions,
+      status: improvements > regressions ? 'improved' : (improvements < regressions ? 'regressed' : 'unchanged')
+    };
+    
+    this.comparisonResults = comparison;
+    
+    return comparison;
+  }
+  
+  // Test implementation methods
+  
+  async testSystemInitialization({ iteration, isWarmup }) {
+    // Measure system initialization time
+    const startTime = Date.now();
+    
+    // Create a new system instance
+    const system = new this.edgeNativeSystem.constructor();
+    
+    // Initialize the system
+    await system.initialize();
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    return {
+      duration,
+      latency: duration,
+      success: true
+    };
+  }
+  
+  async testSystemActivation({ iteration, isWarmup }) {
+    // Measure system activation time
+    
+    // Create and initialize a new system instance
+    const system = new this.edgeNativeSystem.constructor();
+    await system.initialize();
+    
+    // Measure activation time
+    const startTime = Date.now();
+    await system.activate();
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Deactivate the system
+    await system.deactivate();
+    
+    return {
+      duration,
+      latency: duration,
+      success: true
+    };
+  }
+  
+  async testComponentRegistration({ iteration, isWarmup }) {
+    // Measure component registration time
+    
+    // Create and initialize a new system instance
+    const system = new this.edgeNativeSystem.constructor();
+    await system.initialize();
+    await system.activate();
+    
+    // Create test components
+    const components = [];
+    const componentCount = 10;
+    
+    for (let i = 0; i < componentCount; i++) {
+      components.push({
+        id: `test-component-${i}`,
+        type: 'test',
+        name: `Test Component ${i}`,
+        initialize: async () => true,
+        activate: async () => true,
+        deactivate: async () => true
+      });
+    }
+    
+    // Measure registration time
+    const startTime = Date.now();
+    
+    for (const component of components) {
+      await system.registerComponent(component);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Deactivate the system
+    await system.deactivate();
+    
+    return {
+      duration,
+      latency: duration / componentCount,
+      throughput: componentCount / (duration / 1000),
+      componentCount,
+      success: true
+    };
+  }
+  
+  async testDataFlowCreation({ iteration, isWarmup }) {
+    // Measure data flow creation time
+    
+    // Get data highway
+    const dataHighway = this.edgeNativeSystem.getDataHighway();
+    
+    if (!dataHighway) {
+      throw new Error("Data highway not found");
+    }
+    
+    // Create test flow configurations
+    const flowConfigs = [];
+    const flowCount = 10;
+    
+    for (let i = 0; i < flowCount; i++) {
+      flowConfigs.push({
+        name: `Test Flow ${i}`,
+        source: 'test-source',
+        destination: 'test-destination',
+        priority: Math.floor(Math.random() * 5) + 1,
+        securityLevel: ['standard', 'high', 'maximum'][Math.floor(Math.random() * 3)]
+      });
+    }
+    
+    // Measure flow creation time
+    const startTime = Date.now();
+    const flows = [];
+    
+    for (const config of flowConfigs) {
+      const flow = await dataHighway.createFlow(config);
+      flows.push(flow);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Clean up flows
+    for (const flow of flows) {
+      await dataHighway.deleteFlow(flow.id);
+    }
+    
+    return {
+      duration,
+      latency: duration / flowCount,
+      throughput: flowCount / (duration / 1000),
+      flowCount,
+      success: true
+    };
+  }
+  
+  async testDataTransmission({ iteration, isWarmup }) {
+    // Measure data transmission performance
+    
+    // Get data highway
+    const dataHighway = this.edgeNativeSystem.getDataHighway();
+    
+    if (!dataHighway) {
+      throw new Error("Data highway not found");
+    }
+    
+    // Create a test flow
+    const flow = await dataHighway.createFlow({
+      name: 'Benchmark Flow',
+      source: 'benchmark-source',
+      destination: 'benchmark-destination',
+      priority: 1,
+      securityLevel: 'standard'
+    });
+    
+    // Start the flow
+    await dataHighway.startFlow(flow.id);
+    
+    // Prepare test data
+    const messageCount = 100;
+    const messageSize = 1024; // bytes
+    const testData = {
+      id: 'benchmark-data',
+      timestamp: Date.now(),
+      payload: 'X'.repeat(messageSize)
+    };
+    
+    // Measure transmission time
+    const startTime = Date.now();
+    const results = [];
+    
+    for (let i = 0; i < messageCount; i++) {
+      const result = await flow.sendData({
+        ...testData,
+        index: i
+      });
+      
+      results.push(result);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const totalBytes = messageCount * messageSize;
+    const throughput = totalBytes / (duration / 1000); // bytes per second
+    const latency = duration / messageCount; // average latency per message
+    
+    // Clean up
+    await dataHighway.stopFlow(flow.id);
+    await dataHighway.deleteFlow(flow.id);
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      messageCount,
+      messageSize,
+      totalBytes,
+      success: true
+    };
+  }
+  
+  async testDataProcessing({ iteration, isWarmup }) {
+    // Measure data processing performance
+    
+    // Get data highway
+    const dataHighway = this.edgeNativeSystem.getDataHighway();
+    
+    if (!dataHighway) {
+      throw new Error("Data highway not found");
+    }
+    
+    // Get a processor
+    const processor = dataHighway.processors.get('json-processor');
+    
+    if (!processor) {
+      throw new Error("JSON processor not found");
+    }
+    
+    // Prepare test data
+    const operationCount = 100;
+    const testData = {
+      id: 'benchmark-data',
+      timestamp: Date.now(),
+      values: Array.from({ length: 100 }, (_, i) => ({
+        key: `key-${i}`,
+        value: Math.random() * 1000
+      }))
+    };
+    
+    // Measure processing time
+    const startTime = Date.now();
+    const results = [];
+    
+    for (let i = 0; i < operationCount; i++) {
+      const result = await processor.processData(testData, {
+        operation: 'transform',
+        sourceFormat: 'json',
+        targetFormat: 'json'
+      });
+      
+      results.push(result);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const latency = duration / operationCount; // average latency per operation
+    const throughput = operationCount / (duration / 1000); // operations per second
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      operationCount,
+      success: true
+    };
+  }
+  
+  async testMemoryAllocation({ iteration, isWarmup }) {
+    // Measure memory allocation performance
+    
+    // Get memory system
+    const memorySystem = this.edgeNativeSystem.getMemorySystem();
+    
+    if (!memorySystem) {
+      throw new Error("Memory system not found");
+    }
+    
+    // Prepare test parameters
+    const allocationCount = 100;
+    const allocationSize = 1024 * 1024; // 1MB
+    
+    // Measure allocation time
+    const startTime = Date.now();
+    const allocations = [];
+    
+    for (let i = 0; i < allocationCount; i++) {
+      const allocation = await memorySystem.allocateMemory({
+        size: allocationSize,
+        type: 'buffer',
+        name: `benchmark-allocation-${i}`
+      });
+      
+      allocations.push(allocation);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const latency = duration / allocationCount; // average latency per allocation
+    const throughput = allocationCount / (duration / 1000); // allocations per second
+    
+    // Clean up
+    for (const allocation of allocations) {
+      await memorySystem.freeMemory(allocation.id);
+    }
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      allocationCount,
+      allocationSize,
+      totalAllocated: allocationCount * allocationSize,
+      success: true
+    };
+  }
+  
+  async testMemoryAccess({ iteration, isWarmup }) {
+    // Measure memory access performance
+    
+    // Get memory system
+    const memorySystem = this.edgeNativeSystem.getMemorySystem();
+    
+    if (!memorySystem) {
+      throw new Error("Memory system not found");
+    }
+    
+    // Allocate test memory
+    const allocation = await memorySystem.allocateMemory({
+      size: 1024 * 1024, // 1MB
+      type: 'buffer',
+      name: 'benchmark-memory'
+    });
+    
+    // Write test data
+    await memorySystem.writeMemory(allocation.id, 0, Buffer.alloc(allocation.size, 1));
+    
+    // Prepare test parameters
+    const accessCount = 1000;
+    const accessSize = 1024; // 1KB
+    
+    // Measure read access time
+    const startTime = Date.now();
+    
+    for (let i = 0; i < accessCount; i++) {
+      const offset = Math.floor(Math.random() * (allocation.size - accessSize));
+      await memorySystem.readMemory(allocation.id, offset, accessSize);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const latency = duration / accessCount; // average latency per access
+    const throughput = (accessCount * accessSize) / (duration / 1000); // bytes per second
+    
+    // Clean up
+    await memorySystem.freeMemory(allocation.id);
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      accessCount,
+      accessSize,
+      totalAccessed: accessCount * accessSize,
+      success: true
+    };
+  }
+  
+  async testMemoryPersistence({ iteration, isWarmup }) {
+    // Measure memory persistence performance
+    
+    // Get memory system
+    const memorySystem = this.edgeNativeSystem.getMemorySystem();
+    
+    if (!memorySystem) {
+      throw new Error("Memory system not found");
+    }
+    
+    // Prepare test parameters
+    const persistCount = 10;
+    const persistSize = 1024 * 1024; // 1MB
+    
+    // Measure persistence time
+    const startTime = Date.now();
+    const persistenceIds = [];
+    
+    for (let i = 0; i < persistCount; i++) {
+      // Allocate memory
+      const allocation = await memorySystem.allocateMemory({
+        size: persistSize,
+        type: 'buffer',
+        name: `benchmark-persist-${i}`
+      });
+      
+      // Write test data
+      await memorySystem.writeMemory(allocation.id, 0, Buffer.alloc(persistSize, i));
+      
+      // Persist memory
+      const persistenceId = await memorySystem.persistMemory(allocation.id, {
+        name: `benchmark-persist-${i}`,
+        expiration: Date.now() + 3600000 // 1 hour
+      });
+      
+      persistenceIds.push(persistenceId);
+      
+      // Free memory
+      await memorySystem.freeMemory(allocation.id);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const latency = duration / persistCount; // average latency per persistence operation
+    const throughput = (persistCount * persistSize) / (duration / 1000); // bytes per second
+    
+    // Clean up
+    for (const persistenceId of persistenceIds) {
+      await memorySystem.deletePersistentMemory(persistenceId);
+    }
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      persistCount,
+      persistSize,
+      totalPersisted: persistCount * persistSize,
+      success: true
+    };
+  }
+  
+  async testAuthenticationPerformance({ iteration, isWarmup }) {
+    // Measure authentication performance
+    
+    // Get security system
+    const securitySystem = this.edgeNativeSystem.getSecuritySystem();
+    
+    if (!securitySystem) {
+      throw new Error("Security system not found");
+    }
+    
+    // Prepare test parameters
+    const authCount = 100;
+    
+    // Create a test security context
+    const contextId = await securitySystem.createSecurityContext({
+      name: 'benchmark-context',
+      level: 'standard'
+    });
+    
+    // Measure authentication time
+    const startTime = Date.now();
+    const tokens = [];
+    
+    for (let i = 0; i < authCount; i++) {
+      const credentials = {
+        username: `benchmark-user-${i}`,
+        password: `benchmark-password-${i}`
+      };
+      
+      const token = await securitySystem.authenticate(contextId, credentials);
+      tokens.push(token);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const latency = duration / authCount; // average latency per authentication
+    const throughput = authCount / (duration / 1000); // authentications per second
+    
+    // Clean up
+    for (const token of tokens) {
+      await securitySystem.revokeToken(token.id);
+    }
+    
+    await securitySystem.deleteSecurityContext(contextId);
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      authCount,
+      success: true
+    };
+  }
+  
+  async testEncryptionPerformance({ iteration, isWarmup }) {
+    // Measure encryption/decryption performance
+    
+    // Get security system
+    const securitySystem = this.edgeNativeSystem.getSecuritySystem();
+    
+    if (!securitySystem) {
+      throw new Error("Security system not found");
+    }
+    
+    // Prepare test parameters
+    const encryptionCount = 100;
+    const dataSize = 1024 * 10; // 10KB
+    
+    // Generate test data
+    const testData = Buffer.alloc(dataSize, 1).toString('base64');
+    
+    // Generate encryption key
+    const key = await securitySystem.generateEncryptionKey({
+      algorithm: 'aes-256-gcm',
+      name: 'benchmark-key'
+    });
+    
+    // Measure encryption time
+    const encryptStartTime = Date.now();
+    const encryptedData = [];
+    
+    for (let i = 0; i < encryptionCount; i++) {
+      const encrypted = await securitySystem.encryptData(testData, key.id);
+      encryptedData.push(encrypted);
+    }
+    
+    const encryptEndTime = Date.now();
+    const encryptDuration = encryptEndTime - encryptStartTime;
+    
+    // Measure decryption time
+    const decryptStartTime = Date.now();
+    
+    for (let i = 0; i < encryptionCount; i++) {
+      await securitySystem.decryptData(encryptedData[i], key.id);
+    }
+    
+    const decryptEndTime = Date.now();
+    const decryptDuration = decryptEndTime - decryptStartTime;
+    
+    // Calculate metrics
+    const encryptLatency = encryptDuration / encryptionCount;
+    const decryptLatency = decryptDuration / encryptionCount;
+    const encryptThroughput = (encryptionCount * dataSize) / (encryptDuration / 1000);
+    const decryptThroughput = (encryptionCount * dataSize) / (decryptDuration / 1000);
+    
+    // Clean up
+    await securitySystem.deleteEncryptionKey(key.id);
+    
+    return {
+      duration: encryptDuration + decryptDuration,
+      encrypt: {
+        duration: encryptDuration,
+        latency: encryptLatency,
+        throughput: encryptThroughput
+      },
+      decrypt: {
+        duration: decryptDuration,
+        latency: decryptLatency,
+        throughput: decryptThroughput
+      },
+      encryptionCount,
+      dataSize,
+      totalProcessed: encryptionCount * dataSize * 2, // both encrypt and decrypt
+      success: true
+    };
+  }
+  
+  async testSecurityChecks({ iteration, isWarmup }) {
+    // Measure security check performance
+    
+    // Get security system
+    const securitySystem = this.edgeNativeSystem.getSecuritySystem();
+    
+    if (!securitySystem) {
+      throw new Error("Security system not found");
+    }
+    
+    // Prepare test parameters
+    const checkCount = 100;
+    
+    // Create a test security context
+    const contextId = await securitySystem.createSecurityContext({
+      name: 'benchmark-context',
+      level: 'standard'
+    });
+    
+    // Create a test token
+    const token = await securitySystem.authenticate(contextId, {
+      username: 'benchmark-user',
+      password: 'benchmark-password'
+    });
+    
+    // Measure security check time
+    const startTime = Date.now();
+    
+    for (let i = 0; i < checkCount; i++) {
+      await securitySystem.checkPermission(token.id, `resource-${i}`, 'read');
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const latency = duration / checkCount; // average latency per check
+    const throughput = checkCount / (duration / 1000); // checks per second
+    
+    // Clean up
+    await securitySystem.revokeToken(token.id);
+    await securitySystem.deleteSecurityContext(contextId);
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      checkCount,
+      success: true
+    };
+  }
+  
+  async testConcurrentOperations({ iteration, isWarmup }) {
+    // Measure performance with concurrent operations
+    
+    // Prepare test parameters
+    const concurrencyLevels = [1, 5, 10, 20, 50];
+    const operationsPerLevel = 100;
+    
+    const results = [];
+    
+    for (const concurrency of concurrencyLevels) {
+      // Create operation batches
+      const batches = [];
+      
+      for (let i = 0; i < operationsPerLevel; i += concurrency) {
+        const batch = [];
+        
+        for (let j = 0; j < concurrency && i + j < operationsPerLevel; j++) {
+          batch.push(this.createTestOperation(i + j));
+        }
+        
+        batches.push(batch);
+      }
+      
+      // Measure execution time
+      const startTime = Date.now();
+      
+      for (const batch of batches) {
+        await Promise.all(batch.map(operation => operation()));
+      }
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate metrics
+      const operationCount = operationsPerLevel;
+      const latency = duration / operationCount;
+      const throughput = operationCount / (duration / 1000);
+      
+      results.push({
+        concurrency,
+        duration,
+        latency,
+        throughput,
+        operationCount
+      });
+    }
+    
+    // Find optimal concurrency level
+    const optimalConcurrency = results.reduce((prev, current) => 
+      current.throughput > prev.throughput ? current : prev
+    );
+    
+    return {
+      duration: results.reduce((sum, result) => sum + result.duration, 0),
+      concurrencyLevels,
+      results,
+      optimalConcurrency: optimalConcurrency.concurrency,
+      maxThroughput: optimalConcurrency.throughput,
+      success: true
+    };
+  }
+  
+  createTestOperation(index) {
+    // Create a test operation function
+    return async () => {
+      // Simulate a typical system operation
+      const dataHighway = this.edgeNativeSystem.getDataHighway();
+      
+      // Create a flow
+      const flow = await dataHighway.createFlow({
+        name: `Test Flow ${index}`,
+        source: 'test-source',
+        destination: 'test-destination',
+        priority: Math.floor(Math.random() * 5) + 1
+      });
+      
+      // Start the flow
+      await dataHighway.startFlow(flow.id);
+      
+      // Send some data
+      await flow.sendData({
+        id: `test-data-${index}`,
+        timestamp: Date.now(),
+        value: Math.random()
+      });
+      
+      // Stop the flow
+      await dataHighway.stopFlow(flow.id);
+      
+      // Delete the flow
+      await dataHighway.deleteFlow(flow.id);
+      
+      return true;
+    };
+  }
+  
+  async testLoadScaling({ iteration, isWarmup }) {
+    // Measure how system performance scales with increasing load
+    
+    // Use load generator to create increasing load
+    const loadLevels = [10, 50, 100, 200, 500];
+    const results = [];
+    
+    for (const targetRps of loadLevels) {
+      // Configure load generator
+      this.loadGenerator.configure({
+        targetRps,
+        duration: 10, // seconds
+        operation: this.createLoadOperation()
+      });
+      
+      // Start load generator
+      await this.loadGenerator.start();
+      
+      // Wait for load test to complete
+      const loadResult = await this.loadGenerator.waitForCompletion();
+      
+      // Record results
+      results.push({
+        targetRps,
+        actualRps: loadResult.actualRps,
+        latencyP50: loadResult.latencyP50,
+        latencyP95: loadResult.latencyP95,
+        latencyP99: loadResult.latencyP99,
+        errorRate: loadResult.errorRate
+      });
+    }
+    
+    // Find saturation point (where actual RPS significantly diverges from target)
+    let saturationPoint = null;
+    
+    for (const result of results) {
+      const divergence = Math.abs(result.targetRps - result.actualRps) / result.targetRps;
+      
+      if (divergence > 0.1) { // More than 10% divergence
+        saturationPoint = result.targetRps;
+        break;
+      }
+    }
+    
+    return {
+      duration: results.reduce((sum, result) => sum + 10000, 0), // 10 seconds per level
+      loadLevels,
+      results,
+      saturationPoint,
+      maxSustainableRps: saturationPoint ? 
+        results.find(r => r.targetRps === saturationPoint)?.actualRps : 
+        results[results.length - 1].actualRps,
+      success: true
+    };
+  }
+  
+  createLoadOperation() {
+    // Create an operation for load testing
+    return async () => {
+      // Get data highway
+      const dataHighway = this.edgeNativeSystem.getDataHighway();
+      
+      // Send data through a temporary flow
+      await dataHighway.sendData({
+        id: `load-test-data-${Date.now()}`,
+        timestamp: Date.now(),
+        payload: 'X'.repeat(1024) // 1KB payload
+      }, {
+        source: 'load-test',
+        destination: 'load-test-destination',
+        priority: 3,
+        keepFlow: false // Create a new flow for each operation
+      });
+      
+      return true;
+    };
+  }
+  
+  async testResourceScaling({ iteration, isWarmup }) {
+    // Measure how system performance scales with available resources
+    
+    // This is a simplified implementation since we can't easily change
+    // available resources in a running process
+    
+    // Instead, we'll simulate resource constraints by running with
+    // different levels of background load
+    
+    const backgroundLoadLevels = [0, 0.2, 0.4, 0.6, 0.8];
+    const results = [];
+    
+    for (const loadLevel of backgroundLoadLevels) {
+      // Start background load
+      const backgroundLoad = this.startBackgroundLoad(loadLevel);
+      
+      // Wait for background load to stabilize
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Run a standard benchmark
+      const startTime = Date.now();
+      
+      // Create and run 100 flows
+      const dataHighway = this.edgeNativeSystem.getDataHighway();
+      const flows = [];
+      
+      for (let i = 0; i < 100; i++) {
+        const flow = await dataHighway.createFlow({
+          name: `Resource Test Flow ${i}`,
+          source: 'resource-test-source',
+          destination: 'resource-test-destination',
+          priority: 3
+        });
+        
+        await dataHighway.startFlow(flow.id);
+        flows.push(flow);
+      }
+      
+      // Send data through each flow
+      const sendPromises = flows.map(flow => 
+        flow.sendData({
+          id: `resource-test-data-${flow.id}`,
+          timestamp: Date.now(),
+          payload: 'X'.repeat(1024) // 1KB payload
+        })
+      );
+      
+      await Promise.all(sendPromises);
+      
+      // Clean up flows
+      for (const flow of flows) {
+        await dataHighway.stopFlow(flow.id);
+        await dataHighway.deleteFlow(flow.id);
+      }
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Stop background load
+      backgroundLoad.stop();
+      
+      // Record results
+      results.push({
+        backgroundLoad: loadLevel,
+        duration,
+        throughput: 100 / (duration / 1000),
+        latency: duration / 100
+      });
+    }
+    
+    return {
+      duration: results.reduce((sum, result) => sum + result.duration, 0),
+      backgroundLoadLevels,
+      results,
+      success: true
+    };
+  }
+  
+  startBackgroundLoad(level) {
+    // Start background CPU load at specified level (0-1)
+    if (level === 0) {
+      return {
+        stop: () => {}
+      };
+    }
+    
+    // Create a CPU-intensive background task
+    const workers = [];
+    const workerCount = Math.ceil(level * 4); // Up to 4 workers for full load
+    
+    for (let i = 0; i < workerCount; i++) {
+      const worker = {
+        running: true,
+        thread: null
+      };
+      
+      worker.thread = setInterval(() => {
+        if (!worker.running) {
+          return;
+        }
+        
+        // CPU-intensive operation
+        let x = 0;
+        for (let j = 0; j < 1000000; j++) {
+          x += Math.sqrt(j);
+        }
+      }, 0);
+      
+      workers.push(worker);
+    }
+    
+    return {
+      stop: () => {
+        for (const worker of workers) {
+          worker.running = false;
+          clearInterval(worker.thread);
+        }
+      }
+    };
+  }
+  
+  async testProtocolAdapterPerformance({ iteration, isWarmup }) {
+    // Measure protocol adapter performance
+    
+    // Get integration system
+    const integrationSystem = this.edgeNativeSystem.getIntegrationSystem();
+    
+    if (!integrationSystem) {
+      throw new Error("Integration system not found");
+    }
+    
+    // Get a protocol adapter
+    const adapter = integrationSystem.getProtocolAdapter('rest');
+    
+    if (!adapter) {
+      throw new Error("REST protocol adapter not found");
+    }
+    
+    // Prepare test parameters
+    const requestCount = 100;
+    const requestSize = 1024; // 1KB
+    
+    // Prepare test data
+    const testData = {
+      method: 'POST',
+      url: 'https://example.com/api/test',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer test-token'
+      },
+      body: 'X'.repeat(requestSize)
+    };
+    
+    // Measure adapter performance
+    const startTime = Date.now();
+    
+    for (let i = 0; i < requestCount; i++) {
+      await adapter.formatRequest(testData);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const latency = duration / requestCount;
+    const throughput = requestCount / (duration / 1000);
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      requestCount,
+      requestSize,
+      totalProcessed: requestCount * requestSize,
+      success: true
+    };
+  }
+  
+  async testSystemConnectorPerformance({ iteration, isWarmup }) {
+    // Measure system connector performance
+    
+    // Get integration system
+    const integrationSystem = this.edgeNativeSystem.getIntegrationSystem();
+    
+    if (!integrationSystem) {
+      throw new Error("Integration system not found");
+    }
+    
+    // Get a system connector
+    const connector = integrationSystem.getSystemConnector('database');
+    
+    if (!connector) {
+      throw new Error("Database system connector not found");
+    }
+    
+    // Prepare test parameters
+    const operationCount = 100;
+    
+    // Prepare test data
+    const testData = {
+      operation: 'query',
+      query: 'SELECT * FROM test_table WHERE id = ?',
+      params: [1]
+    };
+    
+    // Measure connector performance
+    const startTime = Date.now();
+    
+    for (let i = 0; i < operationCount; i++) {
+      await connector.prepareOperation(testData);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const latency = duration / operationCount;
+    const throughput = operationCount / (duration / 1000);
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      operationCount,
+      success: true
+    };
+  }
+  
+  async testDataTransformation({ iteration, isWarmup }) {
+    // Measure data transformation performance
+    
+    // Get integration system
+    const integrationSystem = this.edgeNativeSystem.getIntegrationSystem();
+    
+    if (!integrationSystem) {
+      throw new Error("Integration system not found");
+    }
+    
+    // Get a transformer
+    const transformer = integrationSystem.getTransformer('json');
+    
+    if (!transformer) {
+      throw new Error("JSON transformer not found");
+    }
+    
+    // Prepare test parameters
+    const transformCount = 100;
+    const dataSize = 1024 * 10; // 10KB
+    
+    // Prepare test data
+    const testData = {
+      id: 'benchmark-data',
+      timestamp: Date.now(),
+      items: Array.from({ length: 100 }, (_, i) => ({
+        id: i,
+        name: `Item ${i}`,
+        value: Math.random() * 1000,
+        tags: ['benchmark', 'test', `tag-${i}`]
+      }))
+    };
+    
+    // Prepare transformation template
+    const template = {
+      id: '$.id',
+      time: '$.timestamp',
+      count: '$.items.length',
+      values: '$.items[*].value',
+      average: '$.items[*].value.avg()'
+    };
+    
+    // Measure transformation performance
+    const startTime = Date.now();
+    
+    for (let i = 0; i < transformCount; i++) {
+      await transformer.transform(testData, template);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const latency = duration / transformCount;
+    const throughput = transformCount / (duration / 1000);
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      transformCount,
+      dataSize,
+      success: true
+    };
+  }
+  
+  async testE2ERequestResponse({ iteration, isWarmup }) {
+    // Measure end-to-end request-response performance
+    
+    // Create a test endpoint
+    const endpoint = await this.edgeNativeSystem.createEndpoint({
+      name: 'benchmark-endpoint',
+      type: 'rest',
+      path: '/benchmark',
+      method: 'POST',
+      handler: async (request) => {
+        return {
+          status: 200,
+          body: {
+            id: 'response',
+            timestamp: Date.now(),
+            echo: request.body
+          }
+        };
+      }
+    });
+    
+    // Prepare test parameters
+    const requestCount = 50;
+    const requestSize = 1024; // 1KB
+    
+    // Prepare test data
+    const testData = {
+      id: 'benchmark-request',
+      timestamp: Date.now(),
+      payload: 'X'.repeat(requestSize)
+    };
+    
+    // Measure end-to-end performance
+    const startTime = Date.now();
+    const responses = [];
+    
+    for (let i = 0; i < requestCount; i++) {
+      const response = await this.edgeNativeSystem.processRequest({
+        endpoint: '/benchmark',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: {
+          ...testData,
+          index: i
+        }
+      });
+      
+      responses.push(response);
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const latency = duration / requestCount;
+    const throughput = requestCount / (duration / 1000);
+    
+    // Clean up
+    await this.edgeNativeSystem.deleteEndpoint(endpoint.id);
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      requestCount,
+      requestSize,
+      success: true
+    };
+  }
+  
+  async testE2EDataPipeline({ iteration, isWarmup }) {
+    // Measure end-to-end data pipeline performance
+    
+    // Create a test data pipeline
+    const pipeline = await this.edgeNativeSystem.createDataPipeline({
+      name: 'benchmark-pipeline',
+      source: {
+        type: 'memory',
+        config: {
+          name: 'benchmark-source'
+        }
+      },
+      processors: [
+        {
+          type: 'transform',
+          config: {
+            mapping: {
+              id: '$.id',
+              timestamp: '$.timestamp',
+              value: '$.data.value',
+              processed: true
+            }
+          }
+        },
+        {
+          type: 'filter',
+          config: {
+            condition: '$.value > 0'
+          }
+        }
+      ],
+      destination: {
+        type: 'memory',
+        config: {
+          name: 'benchmark-destination'
+        }
+      }
+    });
+    
+    // Prepare test parameters
+    const messageCount = 100;
+    const messageSize = 1024; // 1KB
+    
+    // Prepare test data
+    const testMessages = [];
+    
+    for (let i = 0; i < messageCount; i++) {
+      testMessages.push({
+        id: `msg-${i}`,
+        timestamp: Date.now(),
+        data: {
+          value: Math.random() * 100,
+          payload: 'X'.repeat(messageSize)
+        }
+      });
+    }
+    
+    // Measure pipeline performance
+    const startTime = Date.now();
+    
+    // Send messages to pipeline
+    await this.edgeNativeSystem.sendToDataPipeline(pipeline.id, testMessages);
+    
+    // Wait for pipeline to process all messages
+    await this.edgeNativeSystem.waitForPipelineCompletion(pipeline.id);
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Get processed messages
+    const processedMessages = await this.edgeNativeSystem.getDataPipelineResults(pipeline.id);
+    
+    // Calculate metrics
+    const latency = duration / messageCount;
+    const throughput = messageCount / (duration / 1000);
+    
+    // Clean up
+    await this.edgeNativeSystem.deleteDataPipeline(pipeline.id);
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      messageCount,
+      messageSize,
+      processedCount: processedMessages.length,
+      success: true
+    };
+  }
+  
+  async testE2ETransaction({ iteration, isWarmup }) {
+    // Measure end-to-end transaction performance
+    
+    // Get transaction system
+    const transactionSystem = this.edgeNativeSystem.getTransactionSystem();
+    
+    if (!transactionSystem) {
+      throw new Error("Transaction system not found");
+    }
+    
+    // Prepare test parameters
+    const transactionCount = 50;
+    const operationsPerTransaction = 5;
+    
+    // Measure transaction performance
+    const startTime = Date.now();
+    const results = [];
+    
+    for (let i = 0; i < transactionCount; i++) {
+      // Start transaction
+      const transaction = await transactionSystem.beginTransaction({
+        name: `benchmark-transaction-${i}`,
+        isolation: 'serializable'
+      });
+      
+      try {
+        // Perform operations
+        for (let j = 0; j < operationsPerTransaction; j++) {
+          await transactionSystem.executeOperation(transaction.id, {
+            type: 'write',
+            target: `benchmark-resource-${j}`,
+            data: {
+              id: `data-${i}-${j}`,
+              timestamp: Date.now(),
+              value: Math.random() * 1000
+            }
+          });
+        }
+        
+        // Commit transaction
+        await transactionSystem.commitTransaction(transaction.id);
+        
+        results.push({
+          transactionId: transaction.id,
+          status: 'committed',
+          operationCount: operationsPerTransaction
+        });
+      } catch (error) {
+        // Rollback transaction on error
+        await transactionSystem.rollbackTransaction(transaction.id);
+        
+        results.push({
+          transactionId: transaction.id,
+          status: 'rolled-back',
+          error: error.message
+        });
+      }
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // Calculate metrics
+    const successfulTransactions = results.filter(r => r.status === 'committed').length;
+    const latency = duration / transactionCount;
+    const throughput = successfulTransactions / (duration / 1000);
+    
+    return {
+      duration,
+      latency,
+      throughput,
+      transactionCount,
+      operationsPerTransaction,
+      successfulTransactions,
+      failedTransactions: transactionCount - successfulTransactions,
+      success: true
+    };
+  }
+  
+  // Helper methods
+  
+  calculateMean(values) {
+    if (!values || values.length === 0) {
+      return 0;
+    }
+    
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  }
+  
+  calculateStdDev(values) {
+    if (!values || values.length <= 1) {
+      return 0;
+    }
+    
+    const mean = this.calculateMean(values);
+    const squaredDiffs = values.map(value => Math.pow(value - mean, 2));
+    const variance = this.calculateMean(squaredDiffs);
+    
+    return Math.sqrt(variance);
+  }
+  
+  calculatePercentile(sortedValues, percentile) {
+    if (!sortedValues || sortedValues.length === 0) {
+      return 0;
+    }
+    
+    const index = Math.ceil((percentile / 100) * sortedValues.length) - 1;
+    return sortedValues[Math.max(0, Math.min(index, sortedValues.length - 1))];
+  }
+  
+  generateReport() {
+    if (!this.aggregatedResults) {
+      return "No benchmark results available";
+    }
+    
+    // Generate a detailed report
+    const report = {
+      title: this.name,
+      timestamp: new Date().toISOString(),
+      duration: `${(this.aggregatedResults.duration / 1000).toFixed(2)} seconds`,
+      status: this.aggregatedResults.status,
+      summary: {
+        suites: this.aggregatedResults.suiteCount,
+        throughput: this.aggregatedResults.throughput ? 
+          `${this.aggregatedResults.throughput.mean.toFixed(2)} ops/sec` : 'N/A',
+        latency: this.aggregatedResults.latency ? 
+          `${this.aggregatedResults.latency.mean.toFixed(2)} ms` : 'N/A',
+        errorRate: this.aggregatedResults.errorRate ? 
+          `${(this.aggregatedResults.errorRate.mean * 100).toFixed(2)}%` : 'N/A'
+      },
+      thresholds: this.aggregatedResults.thresholds ? 
+        `${this.aggregatedResults.thresholds.passed ? 'PASSED' : 'FAILED'}` : 'N/A',
+      suites: Array.from(this.results.values()).map(suite => ({
+        name: suite.name,
+        status: suite.summary.status,
+        duration: `${(suite.duration / 1000).toFixed(2)} seconds`,
+        tests: suite.tests.length,
+        testsPassed: suite.tests.filter(t => t.summary.status === 'success').length
+      }))
+    };
+    
+    // Add comparison if available
+    if (this.comparisonResults) {
+      report.comparison = {
+        baselineTimestamp: new Date(this.comparisonResults.baseline.timestamp).toISOString(),
+        status: this.comparisonResults.overall.status,
+        improvements: this.comparisonResults.overall.improvements,
+        regressions: this.comparisonResults.overall.regressions,
+        metrics: Object.entries(this.comparisonResults.metrics).map(([key, value]) => ({
+          name: key,
+          baseline: value.baseline,
+          current: value.current,
+          change: `${value.diffPercent > 0 ? '+' : ''}${value.diffPercent.toFixed(2)}%`,
+          improved: value.improved
+        }))
+      };
+    }
+    
+    return report;
+  }
+}
+
+// Helper classes
+
+class ResourceMonitor {
+  constructor(interval = 1000) {
+    this.interval = interval;
+    this.isRunning = false;
+    this.monitoringInterval = null;
+    this.metrics = {
+      cpu: {
+        samples: [],
+        min: 0,
+        max: 0,
+        mean: 0
+      },
+      memory: {
+        samples: [],
+        min: 0,
+        max: 0,
+        mean: 0
+      },
+      network: {
+        samples: [],
+        min: 0,
+        max: 0,
+        mean: 0
+      },
+      disk: {
+        samples: [],
+        min: 0,
+        max: 0,
+        mean: 0
+      }
+    };
+  }
+  
+  async initialize() {
+    // Initialize resource monitoring
+    return true;
+  }
+  
+  async start() {
+    if (this.isRunning) {
+      return false;
+    }
+    
+    // Reset metrics
+    this.resetMetrics();
+    
+    // Start monitoring
+    this.isRunning = true;
+    
+    this.monitoringInterval = setInterval(() => {
+      this.collectMetrics().catch(error => {
+        console.error(`Error collecting resource metrics: ${error.message}`);
+      });
+    }, this.interval);
+    
+    return true;
+  }
+  
+  async stop() {
+    if (!this.isRunning) {
+      return false;
+    }
+    
+    // Stop monitoring
+    clearInterval(this.monitoringInterval);
+    this.monitoringInterval = null;
+    this.isRunning = false;
+    
+    // Calculate final metrics
+    this.calculateMetrics();
+    
+    return true;
+  }
+  
+  resetMetrics() {
+    for (const metric of Object.values(this.metrics)) {
+      metric.samples = [];
+      metric.min = 0;
+      metric.max = 0;
+      metric.mean = 0;
+    }
+  }
+  
+  async collectMetrics() {
+    // Collect CPU metrics
+    const cpuUsage = await this.getCpuUsage();
+    this.metrics.cpu.samples.push(cpuUsage);
+    
+    // Collect memory metrics
+    const memoryUsage = await this.getMemoryUsage();
+    this.metrics.memory.samples.push(memoryUsage);
+    
+    // Collect network metrics
+    const networkUsage = await this.getNetworkUsage();
+    this.metrics.network.samples.push(networkUsage);
+    
+    // Collect disk metrics
+    const diskUsage = await this.getDiskUsage();
+    this.metrics.disk.samples.push(diskUsage);
+    
+    return true;
+  }
+  
+  calculateMetrics() {
+    for (const [name, metric] of Object.entries(this.metrics)) {
+      if (metric.samples.length === 0) {
+        continue;
+      }
+      
+      metric.min = Math.min(...metric.samples);
+      metric.max = Math.max(...metric.samples);
+      metric.mean = metric.samples.reduce((sum, value) => sum + value, 0) / metric.samples.length;
+    }
+  }
+  
+  async getCpuUsage() {
+    // This is a simplified implementation
+    // In a real implementation, this would use OS-specific APIs
+    
+    // Simulate CPU usage between 0 and 1
+    return Math.random() * 0.5 + 0.1; // 10-60% usage
+  }
+  
+  async getMemoryUsage() {
+    // This is a simplified implementation
+    // In a real implementation, this would use OS-specific APIs
+    
+    // Simulate memory usage between 0 and 1
+    return Math.random() * 0.4 + 0.2; // 20-60% usage
+  }
+  
+  async getNetworkUsage() {
+    // This is a simplified implementation
+    // In a real implementation, this would use OS-specific APIs
+    
+    // Simulate network usage in MB/s
+    return Math.random() * 10; // 0-10 MB/s
+  }
+  
+  async getDiskUsage() {
+    // This is a simplified implementation
+    // In a real implementation, this would use OS-specific APIs
+    
+    // Simulate disk usage in MB/s
+    return Math.random() * 5; // 0-5 MB/s
+  }
+  
+  getMetrics() {
+    return {
+      cpu: {
+        min: this.metrics.cpu.min,
+        max: this.metrics.cpu.max,
+        mean: this.metrics.cpu.mean,
+        current: this.metrics.cpu.samples[this.metrics.cpu.samples.length - 1] || 0
+      },
+      memory: {
+        min: this.metrics.memory.min,
+        max: this.metrics.memory.max,
+        mean: this.metrics.memory.mean,
+        current: this.metrics.memory.samples[this.metrics.memory.samples.length - 1] || 0
+      },
+      network: {
+        min: this.metrics.network.min,
+        max: this.metrics.network.max,
+        mean: this.metrics.network.mean,
+        current: this.metrics.network.samples[this.metrics.network.samples.length - 1] || 0
+      },
+      disk: {
+        min: this.metrics.disk.min,
+        max: this.metrics.disk.max,
+        mean: this.metrics.disk.mean,
+        current: this.metrics.disk.samples[this.metrics.disk.samples.length - 1] || 0
+      }
+    };
+  }
+}
+
+class LoadGenerator {
+  constructor(options = {}) {
+    this.maxVirtualUsers = options.maxVirtualUsers || 100;
+    this.rampUpTime = options.rampUpTime || 10; // seconds
+    this.steadyStateTime = options.steadyStateTime || 30; // seconds
+    this.rampDownTime = options.rampDownTime || 10; // seconds
+    
+    this.targetRps = 0;
+    this.operation = null;
+    this.duration = 0;
+    
+    this.isRunning = false;
+    this.startTime = null;
+    this.endTime = null;
+    
+    this.activeUsers = 0;
+    this.completedRequests = 0;
+    this.failedRequests = 0;
+    this.latencies = [];
+  }
+  
+  async initialize() {
+    // Initialize load generator
+    return true;
+  }
+  
+  configure(options = {}) {
+    this.targetRps = options.targetRps || this.targetRps;
+    this.operation = options.operation || this.operation;
+    this.duration = options.duration || this.duration;
+    
+    return true;
+  }
+  
+  async start() {
+    if (this.isRunning) {
+      return false;
+    }
+    
+    if (!this.operation) {
+      throw new Error("No operation configured for load generator");
+    }
+    
+    // Reset metrics
+    this.completedRequests = 0;
+    this.failedRequests = 0;
+    this.latencies = [];
+    
+    // Start load generation
+    this.isRunning = true;
+    this.startTime = Date.now();
+    this.endTime = null;
+    
+    // Start load generation in a separate "thread"
+    this.generateLoad();
+    
+    return true;
+  }
+  
+  async stop() {
+    if (!this.isRunning) {
+      return false;
+    }
+    
+    // Stop load generation
+    this.isRunning = false;
+    this.endTime = Date.now();
+    
+    return true;
+  }
+  
+  async generateLoad() {
+    // Calculate total duration
+    const totalDuration = this.duration * 1000; // convert to ms
+    
+    // Generate load until stopped or duration reached
+    const startTime = Date.now();
+    let elapsedTime = 0;
+    
+    while (this.isRunning && (this.duration === 0 || elapsedTime < totalDuration)) {
+      // Calculate current target RPS based on elapsed time
+      const currentTargetRps = this.calculateCurrentTargetRps(elapsedTime / 1000);
+      
+      // Calculate delay between requests to achieve target RPS
+      const delayBetweenRequests = currentTargetRps > 0 ? 1000 / currentTargetRps : 1000;
+      
+      // Execute operation
+      const operationStartTime = Date.now();
+      
+      try {
+        await this.operation();
+        this.completedRequests++;
+        
+        const operationEndTime = Date.now();
+        const latency = operationEndTime - operationStartTime;
+        this.latencies.push(latency);
+      } catch (error) {
+        this.failedRequests++;
+      }
+      
+      // Wait for next request
+      const operationDuration = Date.now() - operationStartTime;
+      const waitTime = Math.max(0, delayBetweenRequests - operationDuration);
+      
+      if (waitTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+      
+      // Update elapsed time
+      elapsedTime = Date.now() - startTime;
+    }
+    
+    // Stop load generation
+    await this.stop();
+  }
+  
+  calculateCurrentTargetRps(elapsedSeconds) {
+    // Calculate target RPS based on current phase (ramp-up, steady-state, ramp-down)
+    if (elapsedSeconds < this.rampUpTime) {
+      // Ramp-up phase
+      return (elapsedSeconds / this.rampUpTime) * this.targetRps;
+    } else if (elapsedSeconds < this.rampUpTime + this.steadyStateTime) {
+      // Steady-state phase
+      return this.targetRps;
+    } else if (elapsedSeconds < this.rampUpTime + this.steadyStateTime + this.rampDownTime) {
+      // Ramp-down phase
+      const rampDownElapsed = elapsedSeconds - (this.rampUpTime + this.steadyStateTime);
+      return (1 - (rampDownElapsed / this.rampDownTime)) * this.targetRps;
+    } else {
+      // After ramp-down
+      return 0;
+    }
+  }
+  
+  async waitForCompletion() {
+    // Wait for load generation to complete
+    while (this.isRunning) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    // Calculate metrics
+    const duration = this.endTime - this.startTime;
+    const actualRps = this.completedRequests / (duration / 1000);
+    const errorRate = this.failedRequests / (this.completedRequests + this.failedRequests);
+    
+    // Calculate latency percentiles
+    let latencyP50 = 0;
+    let latencyP95 = 0;
+    let latencyP99 = 0;
+    
+    if (this.latencies.length > 0) {
+      this.latencies.sort((a, b) => a - b);
+      
+      latencyP50 = this.latencies[Math.floor(this.latencies.length * 0.5)];
+      latencyP95 = this.latencies[Math.floor(this.latencies.length * 0.95)];
+      latencyP99 = this.latencies[Math.floor(this.latencies.length * 0.99)];
+    }
+    
+    return {
+      duration,
+      targetRps: this.targetRps,
+      actualRps,
+      completedRequests: this.completedRequests,
+      failedRequests: this.failedRequests,
+      errorRate,
+      latencyP50,
+      latencyP95,
+      latencyP99
+    };
+  }
+}
+
+// Helper classes for logging and metrics (same as in other components)
+class LogSystem {
+  constructor(level = 'info') {
+    this.level = level;
+    this.levels = {
+      debug: 0,
+      info: 1,
+      warn: 2,
+      error: 3
+    };
+  }
+  
+  shouldLog(level) {
+    return this.levels[level] >= this.levels[this.level];
+  }
+  
+  debug(message) {
+    if (this.shouldLog('debug')) {
+      console.log(`[DEBUG] ${message}`);
+    }
+  }
+  
+  info(message) {
+    if (this.shouldLog('info')) {
+      console.log(`[INFO] ${message}`);
+    }
+  }
+  
+  warn(message) {
+    if (this.shouldLog('warn')) {
+      console.warn(`[WARN] ${message}`);
+    }
+  }
+  
+  error(message) {
+    if (this.shouldLog('error')) {
+      console.error(`[ERROR] ${message}`);
+    }
+  }
+}
+
+class MetricsCollector {
+  constructor() {
+    this.metrics = {
+      startTime: null,
+      testCount: 0,
+      testsPassed: 0,
+      testsFailed: 0,
+      totalDuration: 0
+    };
+  }
+  
+  async initialize() {
+    this.metrics.startTime = Date.now();
+    return true;
+  }
+  
+  recordTestResult(result) {
+    this.metrics.testCount++;
+    
+    if (result.success) {
+      this.metrics.testsPassed++;
+    } else {
+      this.metrics.testsFailed++;
+    }
+    
+    this.metrics.totalDuration += result.duration || 0;
+  }
+  
+  getMetrics() {
+    return {
+      ...this.metrics,
+      uptime: this.metrics.startTime ? Date.now() - this.metrics.startTime : 0
+    };
+  }
+}
+
+module.exports = PerformanceBenchmark;

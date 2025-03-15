@@ -1,0 +1,1323 @@
+/**
+ * Ghost Terminal
+ * 
+ * This file implements a secure command interface for the EdgeNativeUMaaS system,
+ * providing a terminal-like interface for interacting with the system through
+ * commands, scripts, and interactive sessions.
+ */
+
+class GhostTerminal {
+  constructor(config = {}) {
+    this.id = config.id || `ghost-terminal-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    this.name = config.name || "Ghost Terminal";
+    this.description = config.description || "Secure command interface for EdgeNativeUMaaS";
+    
+    // Terminal state
+    this.isInitialized = false;
+    this.isActive = false;
+    this.startTime = null;
+    
+    // Command registry
+    this.commands = new Map();
+    this.aliases = new Map();
+    this.commandHistory = [];
+    
+    // Session management
+    this.sessions = new Map();
+    this.activeSession = null;
+    
+    // Script management
+    this.scripts = new Map();
+    this.scriptHistory = [];
+    
+    // Output management
+    this.outputBuffer = [];
+    this.outputHandlers = [];
+    
+    // Security
+    this.securityContext = null;
+    this.authenticationProvider = null;
+    
+    // Configuration
+    this.config = {
+      // Terminal settings
+      prompt: config.prompt || 'ghost> ',
+      historySize: config.historySize || 1000,
+      outputBufferSize: config.outputBufferSize || 1000,
+      
+      // Command settings
+      defaultCommandTimeout: config.defaultCommandTimeout || 30000,
+      maxConcurrentCommands: config.maxConcurrentCommands || 5,
+      
+      // Session settings
+      sessionTimeout: config.sessionTimeout || 3600000, // 1 hour
+      maxSessions: config.maxSessions || 10,
+      
+      // Security settings
+      requireAuthentication: config.requireAuthentication !== false,
+      accessControlEnabled: config.accessControlEnabled !== false,
+      
+      ...config
+    };
+    
+    // Metrics
+    this.metrics = {
+      commandsExecuted: 0,
+      successfulCommands: 0,
+      failedCommands: 0,
+      scriptsExecuted: 0,
+      sessionsCreated: 0,
+      activeUsers: 0,
+      averageCommandTime: 0,
+      totalCommandTime: 0
+    };
+    
+    // Logging
+    this.logSystem = new LogSystem(config.logLevel || 'info');
+    
+    // Initialize standard commands
+    this.initializeStandardCommands();
+  }
+  
+  async initialize(edgeNativeSystem) {
+    this.logSystem.info(`Initializing ${this.name}`);
+    
+    try {
+      // Store reference to the edge native system
+      this.edgeNativeSystem = edgeNativeSystem;
+      
+      // Initialize security context
+      await this.initializeSecurity();
+      
+      // Initialize output handlers
+      this.initializeOutputHandlers();
+      
+      this.isInitialized = true;
+      this.logSystem.info(`${this.name} initialized successfully`);
+      
+      return true;
+    } catch (error) {
+      this.logSystem.error(`Ghost terminal initialization failed: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async activate() {
+    if (!this.isInitialized) {
+      throw new Error("Cannot activate ghost terminal: not initialized");
+    }
+    
+    if (this.isActive) {
+      this.logSystem.warn("Ghost terminal is already active");
+      return true;
+    }
+    
+    this.logSystem.info("Activating ghost terminal");
+    
+    try {
+      // Create default session
+      await this.createSession({
+        id: 'default',
+        user: 'system',
+        type: 'system'
+      });
+      
+      // Set as active session
+      this.activeSession = 'default';
+      
+      // Output welcome message
+      this.output(`Welcome to ${this.name} v1.0.0`);
+      this.output(`Type 'help' for a list of available commands`);
+      this.output('');
+      
+      this.isActive = true;
+      this.startTime = Date.now();
+      
+      this.logSystem.info("Ghost terminal activated successfully");
+      
+      return true;
+    } catch (error) {
+      this.logSystem.error(`Ghost terminal activation failed: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async deactivate() {
+    if (!this.isActive) {
+      this.logSystem.warn("Ghost terminal is not active");
+      return true;
+    }
+    
+    this.logSystem.info("Deactivating ghost terminal");
+    
+    try {
+      // Close all sessions
+      await this.closeAllSessions();
+      
+      // Clear output buffer
+      this.outputBuffer = [];
+      
+      this.isActive = false;
+      
+      this.logSystem.info("Ghost terminal deactivated successfully");
+      
+      return true;
+    } catch (error) {
+      this.logSystem.error(`Ghost terminal deactivation failed: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async initializeSecurity() {
+    this.logSystem.debug("Initializing security context");
+    
+    // Create security context
+    this.securityContext = {
+      users: new Map(),
+      roles: new Map(),
+      permissions: new Map()
+    };
+    
+    // Create default roles
+    this.securityContext.roles.set('admin', {
+      name: 'Administrator',
+      permissions: ['*'],
+      createdAt: Date.now()
+    });
+    
+    this.securityContext.roles.set('user', {
+      name: 'Standard User',
+      permissions: [
+        'command:execute:basic',
+        'session:create',
+        'session:close',
+        'script:execute'
+      ],
+      createdAt: Date.now()
+    });
+    
+    this.securityContext.roles.set('guest', {
+      name: 'Guest',
+      permissions: [
+        'command:execute:info',
+        'command:execute:help'
+      ],
+      createdAt: Date.now()
+    });
+    
+    // Create system user
+    this.securityContext.users.set('system', {
+      username: 'system',
+      roles: ['admin'],
+      createdAt: Date.now()
+    });
+    
+    // Set up authentication provider
+    this.authenticationProvider = {
+      authenticate: async (username, password) => {
+        // In a real implementation, this would validate credentials
+        // For demonstration, we'll accept any username/password
+        
+        if (!username) {
+          return { success: false, reason: 'Username is required' };
+        }
+        
+        // Check if user exists
+        const user = this.securityContext.users.get(username);
+        
+        if (user) {
+          return { success: true, user };
+        }
+        
+        // Create new user with 'user' role
+        const newUser = {
+          username,
+          roles: ['user'],
+          createdAt: Date.now(),
+          lastLogin: Date.now()
+        };
+        
+        this.securityContext.users.set(username, newUser);
+        
+        return { success: true, user: newUser };
+      }
+    };
+    
+    return true;
+  }
+  
+  initializeOutputHandlers() {
+    this.logSystem.debug("Initializing output handlers");
+    
+    // Add default output handler (console)
+    this.addOutputHandler({
+      id: 'console',
+      handle: (output) => {
+        console.log(output);
+      }
+    });
+    
+    return true;
+  }
+  
+  initializeStandardCommands() {
+    // Register standard commands
+    this.registerCommand('help', {
+      description: 'Display help information about available commands',
+      usage: 'help [command]',
+      execute: async (args, session) => {
+        if (args.length > 0) {
+          // Help for specific command
+          const commandName = args[0];
+          const command = this.getCommand(commandName);
+          
+          if (!command) {
+            return {
+              success: false,
+              output: `Command not found: ${commandName}`
+            };
+          }
+          
+          return {
+            success: true,
+            output: [
+              `Command: ${commandName}`,
+              `Description: ${command.description}`,
+              `Usage: ${command.usage || commandName}`,
+              command.longDescription ? `\n${command.longDescription}` : ''
+            ]
+          };
+        } else {
+          // List all commands
+          const commands = Array.from(this.commands.entries())
+            .filter(([name, cmd]) => this.canExecuteCommand(session.user, name, cmd))
+            .map(([name, cmd]) => `${name.padEnd(15)} - ${cmd.description}`);
+          
+          return {
+            success: true,
+            output: [
+              'Available Commands:',
+              ...commands,
+              '',
+              'Type "help <command>" for more information about a specific command.'
+            ]
+          };
+        }
+      }
+    });
+    
+    this.registerCommand('info', {
+      description: 'Display information about the system',
+      execute: async (args, session) => {
+        const uptime = this.startTime ? Date.now() - this.startTime : 0;
+        const uptimeStr = this.formatUptime(uptime);
+        
+        return {
+          success: true,
+          output: [
+            `System: EdgeNativeUMaaS`,
+            `Terminal: ${this.name}`,
+            `Version: 1.0.0`,
+            `Uptime: ${uptimeStr}`,
+            `Session: ${session.id}`,
+            `User: ${session.user}`,
+            `Commands: ${this.commands.size}`,
+            `Scripts: ${this.scripts.size}`,
+            `Sessions: ${this.sessions.size}`
+          ]
+        };
+      }
+    });
+    
+    this.registerCommand('clear', {
+      description: 'Clear the terminal output',
+      execute: async (args, session) => {
+        this.clearOutput();
+        
+        return {
+          success: true,
+          output: ''
+        };
+      }
+    });
+    
+    this.registerCommand('exit', {
+      description: 'Exit the current session',
+      execute: async (args, session) => {
+        if (session.id === 'default') {
+          return {
+            success: false,
+            output: 'Cannot exit the default session'
+          };
+        }
+        
+        await this.closeSession(session.id);
+        
+        return {
+          success: true,
+          output: 'Session closed'
+        };
+      }
+    });
+    
+    this.registerCommand('history', {
+      description: 'Display command history',
+      usage: 'history [count]',
+      execute: async (args, session) => {
+        const count = args.length > 0 ? parseInt(args[0]) : 10;
+        
+        if (isNaN(count) || count &lt; 1) {
+          return {
+            success: false,
+            output: 'Invalid count'
+          };
+        }
+        
+        const history = this.commandHistory
+          .filter(entry => entry.session === session.id)
+          .slice(-count)
+          .map((entry, index) => `${index + 1}: ${entry.command}`);
+        
+        return {
+          success: true,
+          output: history.length > 0 ? history : ['No command history']
+        };
+      }
+    });
+    
+    this.registerCommand('sessions', {
+      description: 'List active sessions',
+      execute: async (args, session) => {
+        // Check permission
+        if (!this.hasPermission(session.user, 'session:list')) {
+          return {
+            success: false,
+            output: 'Permission denied'
+          };
+        }
+        
+        const sessions = Array.from(this.sessions.values())
+          .map(s => `${s.id.padEnd(15)} - User: ${s.user}, Type: ${s.type}, Created: ${new Date(s.createdAt).toLocaleString()}`);
+        
+        return {
+          success: true,
+          output: sessions.length > 0 ? sessions : ['No active sessions']
+        };
+      }
+    });
+    
+    this.registerCommand('login', {
+      description: 'Login with a username and password',
+      usage: 'login <username> [password]',
+      execute: async (args, session) => {
+        if (args.length &lt; 1) {
+          return {
+            success: false,
+            output: 'Username is required'
+          };
+        }
+        
+        const username = args[0];
+        const password = args.length > 1 ? args[1] : '';
+        
+        // Authenticate
+        const authResult = await this.authenticationProvider.authenticate(username, password);
+        
+        if (!authResult.success) {
+          return {
+            success: false,
+            output: `Authentication failed: ${authResult.reason}`
+          };
+        }
+        
+        // Create new session
+        const newSessionId = `session-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+        
+        await this.createSession({
+          id: newSessionId,
+          user: username,
+          type: 'user'
+        });
+        
+        // Switch to new session
+        this.activeSession = newSessionId;
+        
+        return {
+          success: true,
+          output: `Logged in as ${username}`
+        };
+      }
+    });
+    
+    this.registerCommand('logout', {
+      description: 'Logout from the current session',
+      execute: async (args, session) => {
+        if (session.id === 'default') {
+          return {
+            success: false,
+            output: 'Cannot logout from the default session'
+          };
+        }
+        
+        // Close current session
+        await this.closeSession(session.id);
+        
+        // Switch to default session
+        this.activeSession = 'default';
+        
+        return {
+          success: true,
+          output: 'Logged out successfully'
+        };
+      }
+    });
+    
+    this.registerCommand('script', {
+      description: 'Manage and execute scripts',
+      usage: 'script <list|create|execute|delete> [name] [content]',
+      execute: async (args, session) => {
+        if (args.length &lt; 1) {
+          return {
+            success: false,
+            output: 'Subcommand is required: list, create, execute, or delete'
+          };
+        }
+        
+        const subcommand = args[0];
+        
+        switch (subcommand) {
+          case 'list':
+            return this.executeScriptList(args.slice(1), session);
+          case 'create':
+            return this.executeScriptCreate(args.slice(1), session);
+          case 'execute':
+            return this.executeScriptExecute(args.slice(1), session);
+          case 'delete':
+            return this.executeScriptDelete(args.slice(1), session);
+          default:
+            return {
+              success: false,
+              output: `Unknown subcommand: ${subcommand}`
+            };
+        }
+      }
+    });
+    
+    this.registerCommand('alias', {
+      description: 'Create command aliases',
+      usage: 'alias <name> <command>',
+      execute: async (args, session) => {
+        if (args.length &lt; 2) {
+          return {
+            success: false,
+            output: 'Alias name and command are required'
+          };
+        }
+        
+        const name = args[0];
+        const command = args.slice(1).join(' ');
+        
+        // Check if alias already exists
+        if (this.aliases.has(name)) {
+          return {
+            success: false,
+            output: `Alias already exists: ${name}`
+          };
+        }
+        
+        // Check if command exists
+        const commandName = command.split(' ')[0];
+        if (!this.commands.has(commandName) && !this.aliases.has(commandName)) {
+          return {
+            success: false,
+            output: `Command not found: ${commandName}`
+          };
+        }
+        
+        // Create alias
+        this.aliases.set(name, command);
+        
+        return {
+          success: true,
+          output: `Created alias: ${name} -> ${command}`
+        };
+      }
+    });
+    
+    this.registerCommand('unalias', {
+      description: 'Remove command aliases',
+      usage: 'unalias <name>',
+      execute: async (args, session) => {
+        if (args.length &lt; 1) {
+          return {
+            success: false,
+            output: 'Alias name is required'
+          };
+        }
+        
+        const name = args[0];
+        
+        // Check if alias exists
+        if (!this.aliases.has(name)) {
+          return {
+            success: false,
+            output: `Alias not found: ${name}`
+          };
+        }
+        
+        // Remove alias
+        this.aliases.delete(name);
+        
+        return {
+          success: true,
+          output: `Removed alias: ${name}`
+        };
+      }
+    });
+    
+    this.registerCommand('system', {
+      description: 'Execute system commands',
+      usage: 'system <subcommand> [args...]',
+      execute: async (args, session) => {
+        // Check permission
+        if (!this.hasPermission(session.user, 'command:execute:system')) {
+          return {
+            success: false,
+            output: 'Permission denied'
+          };
+        }
+        
+        if (args.length &lt; 1) {
+          return {
+            success: false,
+            output: 'Subcommand is required'
+          };
+        }
+        
+        const subcommand = args[0];
+        
+        // Forward to edge native system
+        if (this.edgeNativeSystem) {
+          try {
+            const result = await this.edgeNativeSystem.executeSystemCommand(subcommand, args.slice(1));
+            
+            return {
+              success: true,
+              output: result
+            };
+          } catch (error) {
+            return {
+              success: false,
+              output: `System command failed: ${error.message}`
+            };
+          }
+        } else {
+          return {
+            success: false,
+            output: 'Edge native system not available'
+          };
+        }
+      }
+    });
+  }
+  
+  async executeScriptList(args, session) {
+    const scripts = Array.from(this.scripts.entries())
+      .map(([name, script]) => `${name.padEnd(20)} - ${script.description || 'No description'}`);
+    
+    return {
+      success: true,
+      output: scripts.length > 0 ? scripts : ['No scripts available']
+    };
+  }
+  
+  async executeScriptCreate(args, session) {
+    if (args.length &lt; 2) {
+      return {
+        success: false,
+        output: 'Script name and content are required'
+      };
+    }
+    
+    const name = args[0];
+    const content = args.slice(1).join(' ');
+    
+    // Check permission
+    if (!this.hasPermission(session.user, 'script:create')) {
+      return {
+        success: false,
+        output: 'Permission denied'
+      };
+    }
+    
+    // Check if script already exists
+    if (this.scripts.has(name)) {
+      return {
+        success: false,
+        output: `Script already exists: ${name}`
+      };
+    }
+    
+    // Create script
+    const script = {
+      name,
+      content,
+      description: '',
+      author: session.user,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    
+    this.scripts.set(name, script);
+    
+    return {
+      success: true,
+      output: `Created script: ${name}`
+    };
+  }
+  
+  async executeScriptExecute(args, session) {
+    if (args.length &lt; 1) {
+      return {
+        success: false,
+        output: 'Script name is required'
+      };
+    }
+    
+    const name = args[0];
+    
+    // Check permission
+    if (!this.hasPermission(session.user, 'script:execute')) {
+      return {
+        success: false,
+        output: 'Permission denied'
+      };
+    }
+    
+    // Check if script exists
+    if (!this.scripts.has(name)) {
+      return {
+        success: false,
+        output: `Script not found: ${name}`
+      };
+    }
+    
+    const script = this.scripts.get(name);
+    
+    // Execute script
+    const result = await this.executeScript(script, session);
+    
+    // Update metrics
+    this.metrics.scriptsExecuted++;
+    
+    return result;
+  }
+  
+  async executeScriptDelete(args, session) {
+    if (args.length &lt; 1) {
+      return {
+        success: false,
+        output: 'Script name is required'
+      };
+    }
+    
+    const name = args[0];
+    
+    // Check permission
+    if (!this.hasPermission(session.user, 'script:delete')) {
+      return {
+        success: false,
+        output: 'Permission denied'
+      };
+    }
+    
+    // Check if script exists
+    if (!this.scripts.has(name)) {
+      return {
+        success: false,
+        output: `Script not found: ${name}`
+      };
+    }
+    
+    // Delete script
+    this.scripts.delete(name);
+    
+    return {
+      success: true,
+      output: `Deleted script: ${name}`
+    };
+  }
+  
+  registerCommand(name, command) {
+    if (!name || !command) {
+      throw new Error("Command name and definition are required");
+    }
+    
+    if (this.commands.has(name)) {
+      throw new Error(`Command already registered: ${name}`);
+    }
+    
+    // Validate command
+    if (!command.execute || typeof command.execute !== 'function') {
+      throw new Error("Command must have an execute function");
+    }
+    
+    // Add defaults
+    const fullCommand = {
+      name,
+      description: command.description || 'No description',
+      usage: command.usage || name,
+      category: command.category || 'general',
+      timeout: command.timeout || this.config.defaultCommandTimeout,
+      ...command
+    };
+    
+    this.commands.set(name, fullCommand);
+    
+    this.logSystem.debug(`Registered command: ${name}`);
+    
+    return fullCommand;
+  }
+  
+  unregisterCommand(name) {
+    if (!this.commands.has(name)) {
+      this.logSystem.warn(`Command not registered: ${name}`);
+      return false;
+    }
+    
+    this.commands.delete(name);
+    
+    this.logSystem.debug(`Unregistered command: ${name}`);
+    
+    return true;
+  }
+  
+  getCommand(name) {
+    return this.commands.get(name);
+  }
+  
+  async createSession(options) {
+    const sessionId = options.id || `session-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    
+    // Check if session already exists
+    if (this.sessions.has(sessionId)) {
+      throw new Error(`Session already exists: ${sessionId}`);
+    }
+    
+    // Check if we've reached the maximum number of sessions
+    if (this.sessions.size >= this.config.maxSessions) {
+      throw new Error(`Maximum number of sessions reached: ${this.config.maxSessions}`);
+    }
+    
+    // Create session
+    const session = {
+      id: sessionId,
+      user: options.user || 'guest',
+      type: options.type || 'user',
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      environment: options.environment || {},
+      history: []
+    };
+    
+    this.sessions.set(sessionId, session);
+    
+    // Update metrics
+    this.metrics.sessionsCreated++;
+    this.metrics.activeUsers = this.getActiveUserCount();
+    
+    this.logSystem.info(`Created session: ${sessionId} (User: ${session.user})`);
+    
+    return session;
+  }
+  
+  async closeSession(sessionId) {
+    if (!this.sessions.has(sessionId)) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+    
+    const session = this.sessions.get(sessionId);
+    
+    // Remove session
+    this.sessions.delete(sessionId);
+    
+    // If this was the active session, switch to default
+    if (this.activeSession === sessionId) {
+      this.activeSession = 'default';
+    }
+    
+    // Update metrics
+    this.metrics.activeUsers = this.getActiveUserCount();
+    
+    this.logSystem.info(`Closed session: ${sessionId} (User: ${session.user})`);
+    
+    return true;
+  }
+  
+  async closeAllSessions() {
+    const sessionIds = Array.from(this.sessions.keys());
+    
+    for (const sessionId of sessionIds) {
+      if (sessionId !== 'default') {
+        await this.closeSession(sessionId);
+      }
+    }
+    
+    return true;
+  }
+  
+  getSession(sessionId) {
+    return this.sessions.get(sessionId);
+  }
+  
+  getActiveSession() {
+    return this.sessions.get(this.activeSession);
+  }
+  
+  getActiveUserCount() {
+    const users = new Set();
+    
+    for (const session of this.sessions.values()) {
+      users.add(session.user);
+    }
+    
+    return users.size;
+  }
+  
+  async executeCommand(commandLine, sessionId = null) {
+    if (!this.isActive) {
+      throw new Error("Ghost terminal is not active");
+    }
+    
+    // Get session
+    const session = sessionId ? 
+      this.getSession(sessionId) : 
+      this.getActiveSession();
+    
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId || this.activeSession}`);
+    }
+    
+    // Update session activity
+    session.lastActivity = Date.now();
+    
+    // Parse command line
+    const parts = this.parseCommandLine(commandLine);
+    
+    if (parts.length === 0) {
+      return {
+        success: true,
+        output: ''
+      };
+    }
+    
+    const commandName = parts[0];
+    const args = parts.slice(1);
+    
+    // Check for alias
+    let resolvedCommandLine = commandLine;
+    
+    if (this.aliases.has(commandName)) {
+      resolvedCommandLine = this.aliases.get(commandName);
+      
+      if (args.length > 0) {
+        resolvedCommandLine += ' ' + args.join(' ');
+      }
+      
+      // Parse again with resolved alias
+      return this.executeCommand(resolvedCommandLine, sessionId);
+    }
+    
+    // Get command
+    const command = this.getCommand(commandName);
+    
+    if (!command) {
+      return {
+        success: false,
+        output: `Command not found: ${commandName}`
+      };
+    }
+    
+    // Check permission
+    if (!this.canExecuteCommand(session.user, commandName, command)) {
+      return {
+        success: false,
+        output: 'Permission denied'
+      };
+    }
+    
+    // Add to history
+    this.addToCommandHistory(commandLine, session.id);
+    
+    // Execute command
+    const startTime = Date.now();
+    
+    try {
+      // Set up timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`Command timed out after ${command.timeout}ms`)), command.timeout);
+      });
+      
+      // Execute with timeout
+      const result = await Promise.race([
+        command.execute(args, session, this),
+        timeoutPromise
+      ]);
+      
+      const endTime = Date.now();
+      const executionTime = endTime - startTime;
+      
+      // Update metrics
+      this.metrics.commandsExecuted++;
+      this.metrics.successfulCommands++;
+      this.metrics.totalCommandTime += executionTime;
+      this.metrics.averageCommandTime = this.metrics.totalCommandTime / this.metrics.successfulCommands;
+      
+      // Format output
+      let output = result.output;
+      
+      if (Array.isArray(output)) {
+        output = output.join('\n');
+      }
+      
+      return {
+        success: result.success !== false,
+        output,
+        executionTime
+      };
+    } catch (error) {
+      const endTime = Date.now();
+      const executionTime = endTime - startTime;
+      
+      // Update metrics
+      this.metrics.commandsExecuted++;
+      this.metrics.failedCommands++;
+      
+      this.logSystem.error(`Command execution failed: ${error.message}`);
+      
+      return {
+        success: false,
+        output: `Error: ${error.message}`,
+        executionTime
+      };
+    }
+  }
+  
+  async executeScript(script, session) {
+    this.logSystem.debug(`Executing script: ${script.name}`);
+    
+    // Parse script content into lines
+    const lines = script.content.split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'));
+    
+    const results = [];
+    
+    // Execute each line
+    for (const line of lines) {
+      try {
+        const result = await this.executeCommand(line, session.id);
+        results.push(result);
+        
+        // If a command fails and it's not the last line, stop execution
+        if (!result.success && line !== lines[lines.length - 1]) {
+          break;
+        }
+      } catch (error) {
+        results.push({
+          success: false,
+          output: `Error: ${error.message}`
+        });
+        break;
+      }
+    }
+    
+    // Combine results
+    const success = results.every(result => result.success);
+    const output = results.map(result => result.output).join('\n');
+    
+    return {
+      success,
+      output
+    };
+  }
+  
+  parseCommandLine(commandLine) {
+    if (!commandLine) {
+      return [];
+    }
+    
+    const parts = [];
+    let current = '';
+    let inQuotes = false;
+    let escapeNext = false;
+    
+    for (let i = 0; i &lt; commandLine.length; i++) {
+      const char = commandLine[i];
+      
+      if (escapeNext) {
+        current += char;
+        escapeNext = false;
+      } else if (char === '\\') {
+        escapeNext = true;
+      } else if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ' ' && !inQuotes) {
+        if (current) {
+          parts.push(current);
+          current = '';
+        }
+      } else {
+        current += char;
+      }
+    }
+    
+    if (current) {
+      parts.push(current);
+    }
+    
+    return parts;
+  }
+  
+  addToCommandHistory(command, sessionId) {
+    const entry = {
+      command,
+      session: sessionId,
+      timestamp: Date.now()
+    };
+    
+    this.commandHistory.push(entry);
+    
+    // Limit history size
+    if (this.commandHistory.length > this.config.historySize) {
+      this.commandHistory = this.commandHistory.slice(-this.config.historySize);
+    }
+    
+    return true;
+  }
+  
+  output(message) {
+    if (!message && message !== '') {
+      return false;
+    }
+    
+    // Add to output buffer
+    this.outputBuffer.push({
+      message: message.toString(),
+      timestamp: Date.now()
+    });
+    
+    // Limit buffer size
+    if (this.outputBuffer.length > this.config.outputBufferSize) {
+      this.outputBuffer = this.outputBuffer.slice(-this.config.outputBufferSize);
+    }
+    
+    // Call output handlers
+    for (const handler of this.outputHandlers) {
+      try {
+        handler.handle(message);
+      } catch (error) {
+        this.logSystem.error(`Output handler error: ${error.message}`);
+      }
+    }
+    
+    return true;
+  }
+  
+  clearOutput() {
+    this.outputBuffer = [];
+    
+    // Call output handlers with clear command
+    for (const handler of this.outputHandlers) {
+      try {
+        if (handler.clear) {
+          handler.clear();
+        }
+      } catch (error) {
+        this.logSystem.error(`Output handler clear error: ${error.message}`);
+      }
+    }
+    
+    return true;
+  }
+  
+  addOutputHandler(handler) {
+    if (!handler || !handler.id || !handler.handle) {
+      throw new Error("Output handler must have an id and handle function");
+    }
+    
+    this.outputHandlers.push(handler);
+    
+    return true;
+  }
+  
+  removeOutputHandler(handlerId) {
+    const index = this.outputHandlers.findIndex(h => h.id === handlerId);
+    
+    if (index === -1) {
+      return false;
+    }
+    
+    this.outputHandlers.splice(index, 1);
+    
+    return true;
+  }
+  
+  hasPermission(username, permission) {
+    // System user has all permissions
+    if (username === 'system') {
+      return true;
+    }
+    
+    // Get user
+    const user = this.securityContext.users.get(username);
+    
+    if (!user) {
+      return false;
+    }
+    
+    // Check user roles
+    for (const roleName of user.roles) {
+      const role = this.securityContext.roles.get(roleName);
+      
+      if (!role) {
+        continue;
+      }
+      
+      // Check if role has wildcard permission
+      if (role.permissions.includes('*')) {
+        return true;
+      }
+      
+      // Check if role has specific permission
+      if (role.permissions.includes(permission)) {
+        return true;
+      }
+      
+      // Check for category permission
+      const category = permission.split(':')[0];
+      if (role.permissions.includes(`${category}:*`)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  canExecuteCommand(username, commandName, command) {
+    // Check for specific command permission
+    if (this.hasPermission(username, `command:execute:${commandName}`)) {
+      return true;
+    }
+    
+    // Check for category permission
+    if (command.category && this.hasPermission(username, `command:execute:${command.category}`)) {
+      return true;
+    }
+    
+    // Check for general execute permission
+    if (this.hasPermission(username, 'command:execute')) {
+      return true;
+    }
+    
+    return false;
+  }
+  
+  formatUptime(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    return `${days}d ${hours % 24}h ${minutes % 60}m ${seconds % 60}s`;
+  }
+  
+  async checkHealth() {
+    // Check health of ghost terminal
+    const health = {
+      id: this.id,
+      name: this.name,
+      status: 'healthy',
+      timestamp: Date.now(),
+      details: {
+        isInitialized: this.isInitialized,
+        isActive: this.isActive,
+        uptime: this.startTime ? Date.now() - this.startTime : 0,
+        sessions: this.sessions.size,
+        commands: this.commands.size,
+        scripts: this.scripts.size,
+        metrics: this.metrics
+      }
+    };
+    
+    // Check if any critical issues
+    if (!this.isInitialized) {
+      health.status = 'unhealthy';
+      health.details.reason = 'Not initialized';
+    } else if (!this.isActive) {
+      health.status = 'degraded';
+      health.details.reason = 'Not active';
+    }
+    
+    // Check for inactive sessions
+    const now = Date.now();
+    const inactiveSessions = Array.from(this.sessions.values())
+      .filter(session => now - session.lastActivity > this.config.sessionTimeout);
+    
+    if (inactiveSessions.length > 0) {
+      health.details.inactiveSessions = inactiveSessions.length;
+    }
+    
+    return health;
+  }
+  
+  getMetrics() {
+    return {
+      ...this.metrics,
+      timestamp: Date.now()
+    };
+  }
+}
+
+// Helper classes for logging (same as in other components)
+class LogSystem {
+  constructor(level = 'info') {
+    this.level = level;
+    this.levels = {
+      debug: 0,
+      info: 1,
+      warn: 2,
+      error: 3
+    };
+  }
+  
+  shouldLog(level) {
+    return this.levels[level] >= this.levels[this.level];
+  }
+  
+  debug(message) {
+    if (this.shouldLog('debug')) {
+      console.log(`[DEBUG] ${message}`);
+    }
+  }
+  
+  info(message) {
+    if (this.shouldLog('info')) {
+      console.log(`[INFO] ${message}`);
+    }
+  }
+  
+  warn(message) {
+    if (this.shouldLog('warn')) {
+      console.warn(`[WARN] ${message}`);
+    }
+  }
+  
+  error(message) {
+    if (this.shouldLog('error')) {
+      console.error(`[ERROR] ${message}`);
+    }
+  }
+}
+
+module.exports = GhostTerminal;

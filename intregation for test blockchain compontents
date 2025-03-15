@@ -1,0 +1,797 @@
+/**
+ * EdgeNativeUMaaS Blockchain Integration Testing
+ *
+ * Comprehensive test suite for blockchain functionality and
+ * performance benchmarks for blockchain operations.
+ */
+
+class BlockchainTestSuite {
+  constructor(system, blockchain, config = {}) {
+    this.system = system;
+    this.blockchain = blockchain;
+    this.testResults = new Map();
+    this.benchmarkResults = new Map();
+    this.initialized = false;
+
+    // Default configuration
+    this.config = {
+      enabled: true,
+      testTimeout: 30000, // 30 seconds
+      benchmarkIterations: 100,
+      logLevel: "info",
+      ...config,
+    };
+
+    // Initialize components
+    this.logger = new TestLogger(this.config);
+  }
+
+  /**
+   * Initialize the test suite
+   */
+  async initialize() {
+    console.log("Initializing EdgeNativeUMaaS Blockchain Test Suite...");
+
+    if (!this.system) {
+      throw new Error("Cannot initialize Test Suite: No system provided");
+    }
+
+    if (!this.blockchain) {
+      throw new Error("Cannot initialize Test Suite: No blockchain provided");
+    }
+
+    // Initialize logger
+    await this.logger.initialize();
+
+    this.initialized = true;
+    this.logger.info("Blockchain Test Suite initialized successfully");
+
+    return {
+      status: "initialized",
+    };
+  }
+
+  /**
+   * Run all tests
+   */
+  async runAllTests() {
+    if (!this.initialized) {
+      throw new Error("Test Suite not initialized");
+    }
+
+    this.logger.info("Running all blockchain tests...");
+
+    const startTime = Date.now();
+
+    // Run core tests
+    await this.runCoreTests();
+
+    // Run transaction tests
+    await this.runTransactionTests();
+
+    // Run consensus tests
+    await this.runConsensusTests();
+
+    // Run integration tests
+    await this.runIntegrationTests();
+
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    this.logger.info(`All tests completed in ${duration}ms`);
+
+    return this.getTestResults();
+  }
+
+  /**
+   * Run core blockchain tests
+   */
+  async runCoreTests() {
+    this.logger.info("Running core blockchain tests...");
+
+    // Test blockchain initialization
+    await this.runTest("core.initialization", async () => {
+      const blockchain = this.blockchain;
+      if (!blockchain.initialized) {
+        await blockchain.initialize();
+      }
+      return blockchain.initialized;
+    });
+
+    // Test genesis block
+    await this.runTest("core.genesisBlock", async () => {
+      const blockchain = this.blockchain;
+      const chain = blockchain.chain;
+      
+      if (chain.length === 0) {
+        throw new Error("Blockchain has no blocks");
+      }
+      
+      const genesisBlock = chain[0];
+      if (genesisBlock.index !== 0) {
+        throw new Error("Genesis block index is not 0");
+      }
+      
+      if (genesisBlock.previousHash !== "0".repeat(64)) {
+        throw new Error("Genesis block previous hash is not correct");
+      }
+      
+      return true;
+    });
+
+    // Test block creation
+    await this.runTest("core.blockCreation", async () => {
+      const blockchain = this.blockchain;
+      const newBlock = blockchain.createBlock();
+      
+      if (!newBlock) {
+        throw new Error("Failed to create block");
+      }
+      
+      if (typeof newBlock.index !== "number") {
+        throw new Error("Block index is not a number");
+      }
+      
+      if (!newBlock.timestamp) {
+        throw new Error("Block has no timestamp");
+      }
+      
+      if (!Array.isArray(newBlock.transactions)) {
+        throw new Error("Block transactions is not an array");
+      }
+      
+      return true;
+    });
+
+    // Test block mining
+    await this.runTest("core.blockMining", async () => {
+      const blockchain = this.blockchain;
+      
+      // Add a test transaction
+      const transaction = {
+        id: `test-${Date.now()}`,
+        sender: "test-sender",
+        recipient: "test-recipient",
+        amount: 1.0,
+        timestamp: Date.now(),
+      };
+      
+      blockchain.addTransaction(transaction);
+      
+      const minedBlock = await blockchain.mineBlock();
+      
+      if (!minedBlock) {
+        throw new Error("Failed to mine block");
+      }
+      
+      if (!minedBlock.hash) {
+        throw new Error("Mined block has no hash");
+      }
+      
+      if (!minedBlock.hash.startsWith("0".repeat(minedBlock.difficulty))) {
+        throw new Error("Mined block hash does not meet difficulty requirement");
+      }
+      
+      return true;
+    });
+
+    // Test chain validation
+    await this.runTest("core.chainValidation", async () => {
+      const blockchain = this.blockchain;
+      const isValid = blockchain.validator.validateChain(blockchain.chain);
+      
+      if (!isValid) {
+        throw new Error("Blockchain is not valid");
+      }
+      
+      return true;
+    });
+  }
+
+  /**
+   * Run transaction tests
+   */
+  async runTransactionTests() {
+    this.logger.info("Running transaction tests...");
+
+    // Test transaction creation
+    await this.runTest("transaction.creation", async () => {
+      const transactionManager = this.blockchain.components.get("transaction");
+      
+      if (!transactionManager) {
+        throw new Error("Transaction manager not found");
+      }
+      
+      const transaction = transactionManager.createTransaction({
+        sender: "test-sender",
+        recipient: "test-recipient",
+        amount: 1.0,
+      });
+      
+      if (!transaction) {
+        throw new Error("Failed to create transaction");
+      }
+      
+      if (!transaction.id) {
+        throw new Error("Transaction has no ID");
+      }
+      
+      if (transaction.sender !== "test-sender") {
+        throw new Error("Transaction sender is incorrect");
+      }
+      
+      if (transaction.recipient !== "test-recipient") {
+        throw new Error("Transaction recipient is incorrect");
+      }
+      
+      if (transaction.amount !== 1.0) {
+        throw new Error("Transaction amount is incorrect");
+      }
+      
+      return true;
+    });
+
+    // Test transaction signing
+    await this.runTest("transaction.signing", async () => {
+      const transactionManager = this.blockchain.components.get("transaction");
+      
+      if (!transactionManager) {
+        throw new Error("Transaction manager not found");
+      }
+      
+      const transaction = transactionManager.createTransaction({
+        sender: "test-sender",
+        recipient: "test-recipient",
+        amount: 1.0,
+      });
+      
+      const privateKey = "test-private-key";
+      const signedTransaction = await transactionManager.signTransaction(transaction, privateKey);
+      
+      if (!signedTransaction) {
+        throw new Error("Failed to sign transaction");
+      }
+      
+      if (!signedTransaction.signature) {
+        throw new Error("Signed transaction has no signature");
+      }
+      
+      return true;
+    });
+
+    // Test transaction validation
+    await this.runTest("transaction.validation", async () => {
+      const transactionManager = this.blockchain.components.get("transaction");
+      
+      if (!transactionManager) {
+        throw new Error("Transaction manager not found");
+      }
+      
+      const transaction = transactionManager.createTransaction({
+        sender: "test-sender",
+        recipient: "test-recipient",
+        amount: 1.0,
+      });
+      
+      const isValid = transactionManager.validator.validateTransaction(transaction);
+      
+      if (!isValid) {
+        throw new Error("Transaction is not valid");
+      }
+      
+      return true;
+    });
+
+    // Test transaction submission
+    await this.runTest("transaction.submission", async () => {
+      const transactionManager = this.blockchain.components.get("transaction");
+      
+      if (!transactionManager) {
+        throw new Error("Transaction manager not found");
+      }
+      
+      const transaction = transactionManager.createTransaction({
+        sender: "test-sender",
+        recipient: "test-recipient",
+        amount: 1.0,
+      });
+      
+      const result = await transactionManager.submitTransaction(transaction);
+      
+      if (!result) {
+        throw new Error("Failed to submit transaction");
+      }
+      
+      if (result.id !== transaction.id) {
+        throw new Error("Submitted transaction ID does not match");
+      }
+      
+      if (result.status !== "pending") {
+        throw new Error("Submitted transaction status is not pending");
+      }
+      
+      return true;
+    });
+  }
+
+  /**
+   * Run consensus tests
+   */
+  async runConsensusTests() {
+    this.logger.info("Running consensus tests...");
+
+    // Test consensus engine initialization
+    await this.runTest("consensus.initialization", async () => {
+      const consensusEngine = this.blockchain.components.get("consensus");
+      
+      if (!consensusEngine) {
+        throw new Error("Consensus engine not found");
+      }
+      
+      if (!consensusEngine.initialized) {
+        throw new Error("Consensus engine not initialized");
+      }
+      
+      return true;
+    });
+
+    // Test block proposal
+    await this.runTest("consensus.blockProposal", async () => {
+      const consensusEngine = this.blockchain.components.get("consensus");
+      
+      if (!consensusEngine) {
+        throw new Error("Consensus engine not found");
+      }
+      
+      const blockchain = this.blockchain;
+      const block = blockchain.createBlock();
+      
+      const proposedBlock = await consensusEngine.proposeBlock(block);
+      
+      if (!proposedBlock) {
+        throw new Error("Failed to propose block");
+      }
+      
+      return true;
+    });
+
+    // Test block validation
+    await this.runTest("consensus.blockValidation", async () => {
+      const consensusEngine = this.blockchain.components.get("consensus");
+      
+      if (!consensusEngine) {
+        throw new Error("Consensus engine not found");
+      }
+      
+      const blockchain = this.blockchain;
+      const block = blockchain.createBlock();
+      
+      // Mine the block to make it valid
+      const minedBlock = blockchain.miner.mineBlock(block);
+      
+      const isValid = consensusEngine.validateBlock(minedBlock);
+      
+      if (!isValid) {
+        throw new Error("Block is not valid according to consensus engine");
+      }
+      
+      return true;
+    });
+
+    // Test consensus algorithm
+    await this.runTest("consensus.algorithm", async () => {
+      const consensusEngine = this.blockchain.components.get("consensus");
+      
+      if (!consensusEngine) {
+        throw new Error("Consensus engine not found");
+      }
+      
+      const blockchain = this.blockchain;
+      const block = blockchain.createBlock();
+      
+      // Mine the block to make it valid
+      const minedBlock = blockchain.miner.mineBlock(block);
+      
+      try {
+        const result = await consensusEngine.runConsensus(minedBlock, consensusEngine.nodes);
+        
+        if (!result.approved) {
+          throw new Error(`Consensus failed: ${result.reason}`);
+        }
+        
+        return true;
+      } catch (error) {
+        // If we don't have enough nodes, this is expected
+        if (error.message.includes("not enough nodes")) {
+          return true;
+        }
+        
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Run integration tests
+   */
+  async runIntegrationTests() {
+    this.logger.info("Running integration tests...");
+
+    // Test blockchain integration initialization
+    await this.runTest("integration.initialization", async () => {
+      const integration = this.system.blockchain;
+      
+      if (!integration) {
+        throw new Error("Blockchain integration not found");
+      }
+      
+      if (!integration.initialized) {
+        throw new Error("Blockchain integration not initialized");
+      }
+      
+      return true;
+    });
+
+    // Test transaction submission through integration
+    await this.runTest("integration.transactionSubmission", async () => {
+      const integration = this.system.blockchain;
+      
+      if (!integration) {
+        throw new Error("Blockchain integration not found");
+      }
+      
+      const result = await integration.submitTransaction({
+        sender: "test-sender",
+        recipient: "test-recipient",
+        amount: 1.0,
+      });
+      
+      if (!result) {
+        throw new Error("Failed to submit transaction through integration");
+      }
+      
+      if (!result.id) {
+        throw new Error("Submitted transaction has no ID");
+      }
+      
+      if (result.status !== "pending") {
+        throw new Error("Submitted transaction status is not pending");
+      }
+      
+      return true;
+    });
+
+    // Test blockchain status through integration
+    await this.runTest("integration.blockchainStatus", async () => {
+      const integration = this.system.blockchain;
+      
+      if (!integration) {
+        throw new Error("Blockchain integration not found");
+      }
+      
+      const status = integration.getBlockchainStatus();
+      
+      if (!status) {
+        throw new Error("Failed to get blockchain status");
+      }
+      
+      if (typeof status.chainLength !== "number") {
+        throw new Error("Blockchain status has no chain length");
+      }
+      
+      if (!status.latestBlock) {
+        throw new Error("Blockchain status has no latest block");
+      }
+      
+      return true;
+    });
+
+    // Test metrics reporting
+    await this.runTest("integration.metricsReporting", async () => {
+      const integration = this.system.blockchain;
+      
+      if (!integration) {
+        throw new Error("Blockchain integration not found");
+      }
+      
+      const metrics = integration.getMetrics();
+      
+      if (!metrics) {
+        throw new Error("Failed to get metrics");
+      }
+      
+      if (!metrics.timestamp) {
+        throw new Error("Metrics has no timestamp");
+      }
+      
+      if (!metrics.components) {
+        throw new Error("Metrics has no components");
+      }
+      
+      return true;
+    });
+  }
+
+  /**
+   * Run a single test
+   */
+  async runTest(name, testFn) {
+    this.logger.info(`Running test: ${name}`);
+
+    const startTime = Date.now();
+    let success = false;
+    let error = null;
+
+    try {
+      // Run the test with a timeout
+      const result = await Promise.race([
+        testFn(),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Test timed out")), this.config.testTimeout);
+        }),
+      ]);
+
+      success = !!result;
+    } catch (err) {
+      error = err;
+      this.logger.error(`Test ${name} failed: ${err.message}`);
+    }
+
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    const testResult = {
+      name,
+      success,
+      duration,
+      error: error ? error.message : null,
+      timestamp: endTime,
+    };
+
+    this.testResults.set(name, testResult);
+
+    if (success) {
+      this.logger.info(`Test ${name} passed in ${duration}ms`);
+    }
+
+    return testResult;
+  }
+
+  /**
+   * Run performance benchmarks
+   */
+  async runBenchmarks() {
+    if (!this.initialized) {
+      throw new Error("Test Suite not initialized");
+    }
+
+    this.logger.info("Running blockchain performance benchmarks...");
+
+    const startTime = Date.now();
+
+    // Benchmark transaction creation
+    await this.runBenchmark("transaction.creation", async () => {
+      const transactionManager = this.blockchain.components.get("transaction");
+      
+      if (!transactionManager) {
+        throw new Error("Transaction manager not found");
+      }
+      
+      transactionManager.createTransaction({
+        sender: "benchmark-sender",
+        recipient: "benchmark-recipient",
+        amount: 1.0,
+      });
+    });
+
+    // Benchmark transaction validation
+    await this.runBenchmark("transaction.validation", async () => {
+      const transactionManager = this.blockchain.components.get("transaction");
+      
+      if (!transactionManager) {
+        throw new Error("Transaction manager not found");
+      }
+      
+      const transaction = transactionManager.createTransaction({
+        sender: "benchmark-sender",
+        recipient: "benchmark-recipient",
+        amount: 1.0,
+      });
+      
+      transactionManager.validator.validateTransaction(transaction);
+    });
+
+    // Benchmark block creation
+    await this.runBenchmark("block.creation", async () => {
+      const blockchain = this.blockchain;
+      blockchain.createBlock();
+    });
+
+    // Benchmark block validation
+    await this.runBenchmark("block.validation", async () => {
+      const blockchain = this.blockchain;
+      const block = blockchain.createBlock();
+      const previousBlock = blockchain.getLatestBlock();
+      
+      // Set required properties for validation
+      block.previousHash = previousBlock.hash;
+      block.hash = blockchain.validator.calculateBlockHash(block);
+      
+      blockchain.validator.validateBlock(block, previousBlock);
+    });
+
+    // Benchmark hash calculation
+    await this.runBenchmark("hash.calculation", async () => {
+      const blockchain = this.blockchain;
+      const block = blockchain.createBlock();
+      
+      blockchain.validator.calculateBlockHash(block);
+    });
+
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    this.logger.info(`All benchmarks completed in ${duration}ms`);
+
+    return this.getBenchmarkResults();
+  }
+
+  /**
+   * Run a single benchmark
+   */
+  async runBenchmark(name, benchmarkFn) {
+    this.logger.info(`Running benchmark: ${name}`);
+
+    const iterations = this.config.benchmarkIterations;
+    const times = [];
+
+    // Warm-up
+    await benchmarkFn();
+
+    // Run benchmark
+    for (let i = 0; i < iterations; i++) {
+      const startTime = performance.now();
+      await benchmarkFn();
+      const endTime = performance.now();
+      times.push(endTime - startTime);
+    }
+
+    // Calculate statistics
+    const total = times.reduce((sum, time) => sum + time, 0);
+    const average = total / times.length;
+    const min = Math.min(...times);
+    const max = Math.max(...times);
+    
+    // Calculate standard deviation
+    const squaredDiffs = times.map(time => Math.pow(time - average, 2));
+    const avgSquaredDiff = squaredDiffs.reduce((sum, diff) => sum + diff, 0) / squaredDiffs.length;
+    const stdDev = Math.sqrt(avgSquaredDiff);
+
+    const benchmarkResult = {
+      name,
+      iterations,
+      average,
+      min,
+      max,
+      stdDev,
+      total,
+      timestamp: Date.now(),
+    };
+
+    this.benchmarkResults.set(name, benchmarkResult);
+
+    this.logger.info(`Benchmark ${name}: avg=${average.toFixed(2)}ms, min=${min.toFixed(2)}ms, max=${max.toFixed(2)}ms, stdDev=${stdDev.toFixed(2)}ms`);
+
+    return benchmarkResult;
+  }
+
+  /**
+   * Get test results
+   */
+  getTestResults() {
+    const results = {
+      summary: {
+        total: this.testResults.size,
+        passed: Array.from(this.testResults.values()).filter(result => result.success).length,
+        failed: Array.from(this.testResults.values()).filter(result => !result.success).length,
+        timestamp: Date.now(),
+      },
+      tests: Array.from(this.testResults.values()),
+    };
+
+    return results;
+  }
+
+  /**
+   * Get benchmark results
+   */
+  getBenchmarkResults() {
+    const results = {
+      summary: {
+        total: this.benchmarkResults.size,
+        timestamp: Date.now(),
+      },
+      benchmarks: Array.from(this.benchmarkResults.values()),
+    };
+
+    return results;
+  }
+
+  /**
+   * Generate test report
+   */
+  generateTestReport() {
+    const testResults = this.getTestResults();
+    const benchmarkResults = this.getBenchmarkResults();
+
+    const report = {
+      title: "EdgeNativeUMaaS Blockchain Test Report",
+      timestamp: Date.now(),
+      testResults,
+      benchmarkResults,
+    };
+
+    return report;
+  }
+}
+
+/**
+ * Test Logger
+ */
+class TestLogger {
+  constructor(config) {
+    this.config = config;
+    this.logLevel = config.logLevel;
+    this.levels = {
+      error: 0,
+      warn: 1,
+      info: 2,
+      debug: 3,
+    };
+  }
+
+  async initialize() {
+    return true;
+  }
+
+  /**
+   * Log an error message
+   */
+  error(message) {
+    this.log("error", message);
+  }
+
+  /**
+   * Log a warning message
+   */
+  warn(message) {
+    this.log("warn", message);
+  }
+
+  /**
+   * Log an info message
+   */
+  info(message) {
+    this.log("info", message);
+  }
+
+  /**
+   * Log a debug message
+   */
+  debug(message) {
+    this.log("debug", message);
+  }
+
+  /**
+   * Log a message with the specified level
+   */
+  log(level, message) {
+    if (this.levels[level] > this.levels[this.logLevel]) {
+      return;
+    }
+
+    console.log(`[BLOCKCHAIN TEST ${level.toUpperCase()}] ${message}`);
+  }
+}
+
+module.exports = BlockchainTestSuite;

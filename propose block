@@ -1,0 +1,1 @@
+const proposedBlock = await consensusEngine.proposeBlock(block);

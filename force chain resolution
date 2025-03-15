@@ -1,0 +1,10 @@
+// Manually resolve chain conflicts
+blockchain.resolveConflicts()
+  .then(replaced => {
+    if (replaced) {
+      console.log('Chain was replaced with longer chain');
+    } else {
+      console.log('Local chain is authoritative');
+    }
+  })
+  .catch(error => console.error('Chain resolution error:', error));

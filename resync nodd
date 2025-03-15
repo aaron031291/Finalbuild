@@ -1,0 +1,31 @@
+// Resync node from scratch
+async function resyncNode() {
+  // Stop mining
+  blockchain.stopMining();
+  
+  // Clear chain
+  blockchain.chain = [];
+  
+  // Get chain from a trusted node
+  const trustedNode = 'http://trusted-node.example.com:3000';
+  try {
+    const response = await fetch(`${trustedNode}/chain`);
+    const data = await response.json();
+    
+    // Validate chain
+    if (blockchain.validator.validateChain(data.chain)) {
+      blockchain.chain = data.chain;
+      console.log(`Chain resynced from ${trustedNode}`);
+    } else {
+      console.error(`Invalid chain from ${trustedNode}`);
+    }
+  } catch (error) {
+    console.error(`Resync error: ${error.message}`);
+  }
+  
+  // Restart mining
+  blockchain.startMining();
+}
+
+// Run resync
+resyncNode().catch(console.error);

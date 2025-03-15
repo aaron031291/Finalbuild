@@ -1,0 +1,7 @@
+// Check network configuration
+console.log('Network Config:', blockchain.config.network);
+
+// Verify host and port
+if (blockchain.config.network.host !== '0.0.0.0') {
+  console.warn('Host not set to 0.0.0.0, may not accept external connections');
+}

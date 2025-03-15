@@ -1,0 +1,1334 @@
+/**
+ * EdgeNativeUMaaS Blockchain Core
+ *
+ * Core blockchain implementation for the EdgeNativeUMaaS platform.
+ * Provides fundamental blockchain structures, block creation, validation,
+ * and chain management capabilities.
+ */
+
+class BlockchainCore {
+  constructor(system, config = {}) {
+    this.system = system
+    this.chain = []
+    this.pendingTransactions = []
+    this.nodes = new Set()
+    this.eventListeners = new Map()
+    this.initialized = false
+
+    // Default configuration with sensible values
+    this.config = {
+      enabled: true,
+      algorithm: "PoW", // PoW, PoS, PoA, DPoS, etc.
+      blockTime: 15000, // 15 seconds
+      difficulty: 4, // Number of leading zeros for PoW
+      blockReward: 1.0,
+      maxTransactionsPerBlock: 100,
+      genesisData: { message: "EdgeNativeUMaaS Genesis Block" },
+      consensusThreshold: 0.66, // 66% of nodes must agree
+      autoMine: true,
+      miningInterval: 15000, // 15 seconds
+      logLevel: "info",
+      ...config,
+    }
+
+    // Initialize components
+    this.logger = new BlockchainLogger(this.config)
+    this.validator = new BlockValidator(this.config)
+    this.miner = new BlockMiner(this.config)
+    this.storage = new BlockchainStorage(this.config)
+    this.metrics = new BlockchainMetrics(this.config)
+    this.consensus = this.createConsensusEngine(this.config.algorithm)
+  }
+
+  /**
+   * Initialize the blockchain
+   */
+  async initialize() {
+    console.log("Initializing EdgeNativeUMaaS Blockchain Core...")
+
+    if (!this.system) {
+      throw new Error("Cannot initialize Blockchain Core: No system provided")
+    }
+
+    if (!this.config.enabled) {
+      console.log("Blockchain Core is disabled. Skipping initialization.")
+      return {
+        status: "disabled",
+      }
+    }
+
+    // Initialize logger
+    await this.logger.initialize()
+
+    // Initialize storage
+    await this.storage.initialize()
+
+    // Initialize metrics
+    await this.metrics.initialize()
+
+    // Load existing chain or create genesis block
+    const existingChain = await this.storage.loadChain()
+
+    if (existingChain && existingChain.length > 0) {
+      this.logger.info("Loading existing blockchain")
+      this.chain = existingChain
+      this.metrics.recordChainStats(this.chain)
+    } else {
+      this.logger.info("Creating genesis block")
+      const genesisBlock = this.createGenesisBlock()
+      this.chain.push(genesisBlock)
+      await this.storage.saveChain(this.chain)
+      this.metrics.recordNewBlock(genesisBlock)
+    }
+
+    // Initialize consensus engine
+    await this.consensus.initialize(this)
+
+    // Register with system event bus
+    if (this.system.eventBus) {
+      this.system.eventBus.subscribe("system:transaction:new", this.handleNewTransaction.bind(this))
+      this.system.eventBus.subscribe("system:block:new", this.handleNewBlock.bind(this))
+      this.system.eventBus.subscribe("system:node:join", this.handleNodeJoin.bind(this))
+      this.system.eventBus.subscribe("system:node:leave", this.handleNodeLeave.bind(this))
+    }
+
+    // Start auto-mining if enabled
+    if (this.config.autoMine) {
+      this.startMining()
+    }
+
+    this.initialized = true
+    this.logger.info("Blockchain Core initialized successfully")
+    this.emit("blockchain:initialized", { timestamp: Date.now() })
+
+    return {
+      status: "initialized",
+      chainLength: this.chain.length,
+      latestBlock: this.getLatestBlock(),
+    }
+  }
+
+  /**
+   * Create the consensus engine based on the configured algorithm
+   */
+  createConsensusEngine(algorithm) {
+    switch (algorithm.toUpperCase()) {
+      case "POW":
+        return new ProofOfWorkConsensus(this.config)
+      case "POS":
+        return new ProofOfStakeConsensus(this.config)
+      case "POA":
+        return new ProofOfAuthorityConsensus(this.config)
+      case "DPOS":
+        return new DelegatedProofOfStakeConsensus(this.config)
+      case "PBFT":
+        return new PBFTConsensus(this.config)
+      default:
+        this.logger.warn(`Unknown consensus algorithm: ${algorithm}, defaulting to PoW`)
+        return new ProofOfWorkConsensus(this.config)
+    }
+  }
+
+  /**
+   * Create the genesis block
+   */
+  createGenesisBlock() {
+    const timestamp = new Date().getTime()
+    const genesisBlock = {
+      index: 0,
+      timestamp,
+      transactions: [],
+      data: this.config.genesisData,
+      previousHash: "0".repeat(64),
+      hash: "",
+      nonce: 0,
+      difficulty: this.config.difficulty,
+    }
+
+    // Mine the genesis block
+    const minedBlock = this.miner.mineBlock(genesisBlock)
+
+    this.logger.info(`Genesis block created with hash: ${minedBlock.hash}`)
+    this.emit("blockchain:genesis", { block: minedBlock, timestamp: Date.now() })
+
+    return minedBlock
+  }
+
+  /**
+   * Get the latest block in the chain
+   */
+  getLatestBlock() {
+    return this.chain[this.chain.length - 1]
+  }
+
+  /**
+   * Add a new transaction to the pending transactions pool
+   */
+  addTransaction(transaction) {
+    // Validate transaction
+    if (!this.validator.validateTransaction(transaction, this.chain)) {
+      this.logger.warn(`Invalid transaction rejected: ${JSON.stringify(transaction)}`)
+      return false
+    }
+
+    // Add timestamp if not present
+    if (!transaction.timestamp) {
+      transaction.timestamp = new Date().getTime()
+    }
+
+    // Add transaction to pending pool
+    this.pendingTransactions.push(transaction)
+    this.logger.debug(`Transaction added to pool: ${transaction.id}`)
+
+    // Emit event
+    this.emit("blockchain:transaction:added", {
+      transaction,
+      pendingCount: this.pendingTransactions.length,
+      timestamp: Date.now(),
+    })
+
+    // Publish to system event bus
+    if (this.system.eventBus) {
+      this.system.eventBus.publish("system:transaction:added", {
+        transaction,
+        timestamp: Date.now(),
+      })
+    }
+
+    // Update metrics
+    this.metrics.recordNewTransaction(transaction)
+
+    return true
+  }
+
+  /**
+   * Create a new block with pending transactions
+   */
+  createBlock() {
+    const previousBlock = this.getLatestBlock()
+    const transactions = this.pendingTransactions.slice(0, this.config.maxTransactionsPerBlock)
+
+    // Create block reward transaction if enabled
+    if (this.config.blockReward > 0) {
+      const rewardTransaction = {
+        id: `reward-${Date.now()}`,
+        type: "reward",
+        sender: "system",
+        recipient: this.miner.address || "miner",
+        amount: this.config.blockReward,
+        timestamp: new Date().getTime(),
+      }
+
+      transactions.unshift(rewardTransaction)
+    }
+
+    // Create new block
+    const newBlock = {
+      index: previousBlock.index + 1,
+      timestamp: new Date().getTime(),
+      transactions,
+      data: {},
+      previousHash: previousBlock.hash,
+      hash: "",
+      nonce: 0,
+      difficulty: this.adjustDifficulty(previousBlock),
+    }
+
+    this.logger.debug(`Created new block template: index ${newBlock.index}`)
+    return newBlock
+  }
+
+  /**
+   * Mine a new block and add it to the chain
+   */
+  async mineBlock() {
+    // Check if there are pending transactions
+    if (this.pendingTransactions.length === 0) {
+      this.logger.debug("No pending transactions to mine")
+      return null
+    }
+
+    // Create new block
+    const newBlock = this.createBlock()
+
+    // Mine the block
+    this.logger.info(`Mining new block at index ${newBlock.index}`)
+    const startTime = Date.now()
+
+    const minedBlock = this.miner.mineBlock(newBlock)
+
+    const endTime = Date.now()
+    const miningTime = endTime - startTime
+
+    this.logger.info(`Block mined in ${miningTime}ms with hash: ${minedBlock.hash}`)
+
+    // Add block to chain
+    const added = await this.addBlock(minedBlock)
+
+    if (added) {
+      // Remove mined transactions from pending pool
+      const minedTxIds = new Set(minedBlock.transactions.map((tx) => tx.id))
+      this.pendingTransactions = this.pendingTransactions.filter((tx) => !minedTxIds.has(tx.id))
+
+      // Update metrics
+      this.metrics.recordBlockMined(minedBlock, miningTime)
+
+      return minedBlock
+    }
+
+    return null
+  }
+
+  /**
+   * Add a block to the chain
+   */
+  async addBlock(block) {
+    // Validate block
+    if (!this.validator.validateBlock(block, this.getLatestBlock())) {
+      this.logger.warn(`Invalid block rejected: ${block.hash}`)
+      return false
+    }
+
+    // Add block to chain
+    this.chain.push(block)
+
+    // Save chain to storage
+    await this.storage.saveChain(this.chain)
+
+    this.logger.info(`Block ${block.index} added to chain with hash: ${block.hash}`)
+
+    // Emit event
+    this.emit("blockchain:block:added", {
+      block,
+      chainLength: this.chain.length,
+      timestamp: Date.now(),
+    })
+
+    // Publish to system event bus
+    if (this.system.eventBus) {
+      this.system.eventBus.publish("system:block:added", {
+        block,
+        chainLength: this.chain.length,
+        timestamp: Date.now(),
+      })
+    }
+
+    // Update metrics
+    this.metrics.recordNewBlock(block)
+
+    return true
+  }
+
+  /**
+   * Start automatic mining
+   */
+  startMining() {
+    if (this.miningInterval) {
+      clearInterval(this.miningInterval)
+    }
+
+    this.logger.info(`Starting automatic mining (interval: ${this.config.miningInterval}ms)`)
+
+    this.miningInterval = setInterval(async () => {
+      if (this.pendingTransactions.length > 0) {
+        await this.mineBlock()
+      }
+    }, this.config.miningInterval)
+
+    this.emit("blockchain:mining:started", { timestamp: Date.now() })
+  }
+
+  /**
+   * Stop automatic mining
+   */
+  stopMining() {
+    if (this.miningInterval) {
+      clearInterval(this.miningInterval)
+      this.miningInterval = null
+      this.logger.info("Automatic mining stopped")
+      this.emit("blockchain:mining:stopped", { timestamp: Date.now() })
+    }
+  }
+
+  /**
+   * Adjust mining difficulty based on block time
+   */
+  adjustDifficulty(previousBlock) {
+    const difficulty = previousBlock.difficulty
+
+    // Only adjust difficulty every 10 blocks
+    if (previousBlock.index % 10 !== 0) {
+      return difficulty
+    }
+
+    // Get the last 10 blocks
+    const startIndex = Math.max(0, previousBlock.index - 9)
+    const lastBlocks = this.chain.slice(startIndex, previousBlock.index + 1)
+
+    // Calculate average block time
+    let totalTime = 0
+    for (let i = 1; i < lastBlocks.length; i++) {
+      totalTime += lastBlocks[i].timestamp - lastBlocks[i - 1].timestamp
+    }
+
+    const averageBlockTime = totalTime / (lastBlocks.length - 1)
+
+    // Adjust difficulty
+    if (averageBlockTime < this.config.blockTime * 0.5) {
+      // Blocks are being mined too quickly, increase difficulty
+      return difficulty + 1
+    } else if (averageBlockTime > this.config.blockTime * 1.5) {
+      // Blocks are being mined too slowly, decrease difficulty
+      return Math.max(1, difficulty - 1)
+    }
+
+    return difficulty
+  }
+
+  /**
+   * Register a node in the network
+   */
+  registerNode(nodeUrl) {
+    const parsedUrl = new URL(nodeUrl)
+    const nodeAddress = parsedUrl.host
+
+    this.nodes.add(nodeAddress)
+    this.logger.info(`Node registered: ${nodeAddress}`)
+
+    this.emit("blockchain:node:registered", {
+      node: nodeAddress,
+      totalNodes: this.nodes.size,
+      timestamp: Date.now(),
+    })
+
+    return true
+  }
+
+  /**
+   * Remove a node from the network
+   */
+  removeNode(nodeUrl) {
+    const parsedUrl = new URL(nodeUrl)
+    const nodeAddress = parsedUrl.host
+
+    const removed = this.nodes.delete(nodeAddress)
+
+    if (removed) {
+      this.logger.info(`Node removed: ${nodeAddress}`)
+      this.emit("blockchain:node:removed", {
+        node: nodeAddress,
+        totalNodes: this.nodes.size,
+        timestamp: Date.now(),
+      })
+    }
+
+    return removed
+  }
+
+  /**
+   * Resolve conflicts between nodes by adopting the longest valid chain
+   */
+  async resolveConflicts() {
+    let maxLength = this.chain.length
+    let newChain = null
+
+    this.logger.info(`Resolving conflicts with ${this.nodes.size} nodes`)
+
+    // Fetch chains from all nodes
+    for (const node of this.nodes) {
+      try {
+        // In a real implementation, this would make an HTTP request to the node
+        // For this example, we'll simulate it
+        const response = await this.fetchChainFromNode(node)
+
+        const { chain, length } = response
+
+        // Check if the chain is longer and valid
+        if (length > maxLength && this.validator.validateChain(chain)) {
+          maxLength = length
+          newChain = chain
+        }
+      } catch (error) {
+        this.logger.error(`Error fetching chain from node ${node}: ${error.message}`)
+      }
+    }
+
+    // Replace our chain if we found a longer valid chain
+    if (newChain) {
+      this.chain = newChain
+      await this.storage.saveChain(this.chain)
+
+      this.logger.info(`Chain replaced with longer chain (${maxLength} blocks)`)
+      this.emit("blockchain:chain:replaced", {
+        chainLength: maxLength,
+        timestamp: Date.now(),
+      })
+
+      // Update metrics
+      this.metrics.recordChainStats(this.chain)
+
+      return true
+    }
+
+    this.logger.info("Chain is authoritative, no replacement needed")
+    return false
+  }
+
+  /**
+   * Simulate fetching a chain from a node
+   * In a real implementation, this would make an HTTP request
+   */
+  async fetchChainFromNode(node) {
+    // Simulate network delay
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    // Simulate response
+    return {
+      chain: this.chain, // In a real implementation, this would be the node's chain
+      length: this.chain.length,
+    }
+  }
+
+  /**
+   * Handle new transaction event from system
+   */
+  handleNewTransaction(data) {
+    const { transaction } = data
+    this.addTransaction(transaction)
+  }
+
+  /**
+   * Handle new block event from system
+   */
+  handleNewBlock(data) {
+    const { block } = data
+    this.addBlock(block)
+  }
+
+  /**
+   * Handle node join event from system
+   */
+  handleNodeJoin(data) {
+    const { nodeUrl } = data
+    this.registerNode(nodeUrl)
+  }
+
+  /**
+   * Handle node leave event from system
+   */
+  handleNodeLeave(data) {
+    const { nodeUrl } = data
+    this.removeNode(nodeUrl)
+  }
+
+  /**
+   * Register event listener
+   */
+  on(event, listener) {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, [])
+    }
+
+    this.eventListeners.get(event).push(listener)
+    return this
+  }
+
+  /**
+   * Remove event listener
+   */
+  off(event, listener) {
+    if (!this.eventListeners.has(event)) {
+      return this
+    }
+
+    const listeners = this.eventListeners.get(event)
+    const index = listeners.indexOf(listener)
+
+    if (index !== -1) {
+      listeners.splice(index, 1)
+    }
+
+    return this
+  }
+
+  /**
+   * Emit event
+   */
+  emit(event, data) {
+    if (!this.eventListeners.has(event)) {
+      return false
+    }
+
+    const listeners = this.eventListeners.get(event)
+
+    for (const listener of listeners) {
+      try {
+        listener(data)
+      } catch (error) {
+        this.logger.error(`Error in event listener: ${error.message}`)
+      }
+    }
+
+    return true
+  }
+
+  /**
+   * Get blockchain status
+   */
+  getStatus() {
+    return {
+      initialized: this.initialized,
+      chainLength: this.chain.length,
+      pendingTransactions: this.pendingTransactions.length,
+      nodes: this.nodes.size,
+      latestBlock: this.getLatestBlock(),
+      difficulty: this.getLatestBlock().difficulty,
+      algorithm: this.config.algorithm,
+      metrics: this.metrics.getMetrics(),
+    }
+  }
+
+  /**
+   * Get blockchain metrics
+   */
+  getMetrics() {
+    return this.metrics.getMetrics()
+  }
+
+  /**
+   * Shutdown the blockchain
+   */
+  async shutdown() {
+    if (!this.initialized) {
+      return true
+    }
+
+    this.logger.info("Shutting down Blockchain Core...")
+
+    // Stop mining
+    this.stopMining()
+
+    // Save chain to storage
+    await this.storage.saveChain(this.chain)
+
+    this.initialized = false
+    this.logger.info("Blockchain Core shut down successfully")
+
+    return true
+  }
+}
+
+/**
+ * Blockchain Logger
+ */
+class BlockchainLogger {
+  constructor(config) {
+    this.config = config
+    this.logLevel = config.logLevel
+    this.levels = {
+      error: 0,
+      warn: 1,
+      info: 2,
+      debug: 3,
+    }
+  }
+
+  async initialize() {
+    return true
+  }
+
+  /**
+   * Log an error message
+   */
+  error(message) {
+    this.log("error", message)
+  }
+
+  /**
+   * Log a warning message
+   */
+  warn(message) {
+    this.log("warn", message)
+  }
+
+  /**
+   * Log an info message
+   */
+  info(message) {
+    this.log("info", message)
+  }
+
+  /**
+   * Log a debug message
+   */
+  debug(message) {
+    this.log("debug", message)
+  }
+
+  /**
+   * Log a message with the specified level
+   */
+  log(level, message) {
+    if (this.levels[level] > this.levels[this.logLevel]) {
+      return
+    }
+
+    console.log(`[BLOCKCHAIN ${level.toUpperCase()}] ${message}`)
+  }
+}
+
+/**
+ * Block Validator
+ */
+class BlockValidator {
+  constructor(config) {
+    this.config = config
+  }
+
+  /**
+   * Validate a block
+   */
+  validateBlock(block, previousBlock) {
+    // Check block structure
+    if (!block.index || !block.timestamp || !block.transactions || !block.previousHash || !block.hash || !block.nonce) {
+      return false
+    }
+
+    // Check block index
+    if (block.index !== previousBlock.index + 1) {
+      return false
+    }
+
+    // Check previous hash
+    if (block.previousHash !== previousBlock.hash) {
+      return false
+    }
+
+    // Check block hash
+    const calculatedHash = this.calculateBlockHash(block)
+    if (block.hash !== calculatedHash) {
+      return false
+    }
+
+    // Check proof of work
+    if (!this.hasValidProof(block)) {
+      return false
+    }
+
+    // Validate all transactions in the block
+    for (const transaction of block.transactions) {
+      if (!this.validateTransaction(transaction)) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  /**
+   * Validate a transaction
+   */
+  validateTransaction(transaction) {
+    // Check transaction structure
+    if (!transaction.id || !transaction.sender || !transaction.recipient || transaction.amount === undefined) {
+      return false
+    }
+
+    // Skip further validation for reward transactions
+    if (transaction.type === "reward" && transaction.sender === "system") {
+      return true
+    }
+
+    // In a real implementation, this would check signatures, balances, etc.
+    return true
+  }
+
+  /**
+   * Validate the entire blockchain
+   */
+  validateChain(chain) {
+    // Check genesis block
+    if (chain.length === 0) {
+      return false
+    }
+
+    // Validate each block in the chain
+    for (let i = 1; i < chain.length; i++) {
+      const currentBlock = chain[i]
+      const previousBlock = chain[i - 1]
+
+      if (!this.validateBlock(currentBlock, previousBlock)) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  /**
+   * Calculate block hash
+   */
+  calculateBlockHash(block) {
+    // In a real implementation, this would use a cryptographic hash function
+    // For this example, we'll simulate it
+    const blockData = {
+      index: block.index,
+      timestamp: block.timestamp,
+      transactions: block.transactions,
+      data: block.data,
+      previousHash: block.previousHash,
+      nonce: block.nonce,
+    }
+
+    return this.simulateHash(JSON.stringify(blockData))
+  }
+
+  /**
+   * Simulate a hash function
+   */
+  simulateHash(data) {
+    // In a real implementation, this would use a cryptographic hash function like SHA-256
+    // For this example, we'll use a simple hash simulation
+    let hash = 0
+    for (let i = 0; i < data.length; i++) {
+      const char = data.charCodeAt(i)
+      hash = (hash << 5) - hash + char
+      hash = hash & hash // Convert to 32bit integer
+    }
+
+    // Convert to hex string and ensure it's 64 characters long
+    const hexHash = Math.abs(hash).toString(16).padStart(64, "0")
+    return hexHash
+  }
+
+  /**
+   * Check if a block has a valid proof of work
+   */
+  hasValidProof(block) {
+    // Check if the block hash has the required number of leading zeros
+    return block.hash.startsWith("0".repeat(block.difficulty))
+  }
+}
+
+/**
+ * Block Miner
+ */
+class BlockMiner {
+  constructor(config) {
+    this.config = config
+    this.address = "miner-" + Math.random().toString(36).substring(2, 15)
+  }
+
+  /**
+   * Mine a block
+   */
+  mineBlock(block) {
+    const blockCopy = { ...block }
+    let nonce = 0
+    let hash = ""
+
+    // Mine until we find a valid hash
+    while (true) {
+      blockCopy.nonce = nonce
+      hash = this.calculateBlockHash(blockCopy)
+
+      // Check if hash meets difficulty requirement
+      if (hash.startsWith("0".repeat(blockCopy.difficulty))) {
+        break
+      }
+
+      nonce++
+    }
+
+    // Update block with nonce and hash
+    blockCopy.nonce = nonce
+    blockCopy.hash = hash
+
+    return blockCopy
+  }
+
+  /**
+   * Calculate block hash
+   */
+  calculateBlockHash(block) {
+    // In a real implementation, this would use a cryptographic hash function
+    // For this example, we'll simulate it
+    const blockData = {
+      index: block.index,
+      timestamp: block.timestamp,
+      transactions: block.transactions,
+      data: block.data,
+      previousHash: block.previousHash,
+      nonce: block.nonce,
+    }
+
+    return this.simulateHash(JSON.stringify(blockData))
+  }
+
+  /**
+   * Simulate a hash function
+   */
+  simulateHash(data) {
+    // In a real implementation, this would use a cryptographic hash function like SHA-256
+    // For this example, we'll use a simple hash simulation
+    let hash = 0
+    for (let i = 0; i < data.length; i++) {
+      const char = data.charCodeAt(i)
+      hash = (hash << 5) - hash + char
+      hash = hash & hash // Convert to 32bit integer
+    }
+
+    // Convert to hex string and ensure it's 64 characters long
+    const hexHash = Math.abs(hash).toString(16).padStart(64, "0")
+    return hexHash
+  }
+}
+
+/**
+ * Blockchain Storage
+ */
+class BlockchainStorage {
+  constructor(config) {
+    this.config = config
+    this.storageKey = "blockchain"
+  }
+
+  async initialize() {
+    return true
+  }
+
+  /**
+   * Save chain to storage
+   */
+  async saveChain(chain) {
+    // In a real implementation, this would save to a database or file
+    // For this example, we'll simulate it
+    console.log(`[STORAGE] Saving chain with ${chain.length} blocks`)
+    return true
+  }
+
+  /**
+   * Load chain from storage
+   */
+  async loadChain() {
+    // In a real implementation, this would load from a database or file
+    // For this example, we'll simulate it
+    console.log("[STORAGE] Loading chain from storage")
+    return null // Return null to trigger genesis block creation
+  }
+}
+
+/**
+ * Blockchain Metrics
+ */
+class BlockchainMetrics {
+  constructor(config) {
+    this.config = config
+    this.metrics = {
+      totalBlocks: 0,
+      totalTransactions: 0,
+      averageBlockTime: 0,
+      averageTransactionsPerBlock: 0,
+      averageMiningTime: 0,
+      difficulty: 0,
+      hashRate: 0,
+      lastBlockTime: 0,
+      blockTimes: [],
+      transactionsPerBlock: [],
+      miningTimes: [],
+      timestamps: {
+        firstBlock: 0,
+        lastBlock: 0,
+      },
+    }
+  }
+
+  async initialize() {
+    return true
+  }
+
+  /**
+   * Record a new block
+   */
+  recordNewBlock(block) {
+    this.metrics.totalBlocks++
+    this.metrics.totalTransactions += block.transactions.length
+    this.metrics.difficulty = block.difficulty
+
+    // Update timestamps
+    if (this.metrics.timestamps.firstBlock === 0) {
+      this.metrics.timestamps.firstBlock = block.timestamp
+    }
+    this.metrics.timestamps.lastBlock = block.timestamp
+
+    // Calculate block time
+    if (this.metrics.lastBlockTime > 0) {
+      const blockTime = block.timestamp - this.metrics.lastBlockTime
+      this.metrics.blockTimes.push(blockTime)
+
+      // Keep only the last 100 block times
+      if (this.metrics.blockTimes.length > 100) {
+        this.metrics.blockTimes.shift()
+      }
+
+      // Calculate average block time
+      this.metrics.averageBlockTime =
+        this.metrics.blockTimes.reduce((a, b) => a + b, 0) / this.metrics.blockTimes.length
+    }
+    this.metrics.lastBlockTime = block.timestamp
+
+    // Update transactions per block
+    this.metrics.transactionsPerBlock.push(block.transactions.length)
+
+    // Keep only the last 100 values
+    if (this.metrics.transactionsPerBlock.length > 100) {
+      this.metrics.transactionsPerBlock.shift()
+    }
+
+    // Calculate average transactions per block
+    this.metrics.averageTransactionsPerBlock =
+      this.metrics.transactionsPerBlock.reduce((a, b) => a + b, 0) / this.metrics.transactionsPerBlock.length
+
+    // Calculate hash rate (hashes per second)
+    if (this.metrics.averageMiningTime > 0) {
+      // Estimate hashes needed for current difficulty
+      const hashesPerBlock = Math.pow(16, block.difficulty)
+      this.metrics.hashRate = hashesPerBlock / (this.metrics.averageMiningTime / 1000)
+    }
+  }
+
+  /**
+   * Record a new transaction
+   */
+  recordNewTransaction(transaction) {
+    // This method could track transaction-specific metrics
+    // For this example, we'll just count them in recordNewBlock
+  }
+
+  /**
+   * Record block mining statistics
+   */
+  recordBlockMined(block, miningTime) {
+    this.metrics.miningTimes.push(miningTime)
+
+    // Keep only the last 100 mining times
+    if (this.metrics.miningTimes.length > 100) {
+      this.metrics.miningTimes.shift()
+    }
+
+    // Calculate average mining time
+    this.metrics.averageMiningTime =
+      this.metrics.miningTimes.reduce((a, b) => a + b, 0) / this.metrics.miningTimes.length
+
+    // Calculate hash rate (hashes per second)
+    // Estimate hashes needed for current difficulty
+    const hashesPerBlock = Math.pow(16, block.difficulty)
+    this.metrics.hashRate = hashesPerBlock / (miningTime / 1000)
+  }
+
+  /**
+   * Record chain statistics
+   */
+  recordChainStats(chain) {
+    this.metrics.totalBlocks = chain.length
+
+    let totalTransactions = 0
+    for (const block of chain) {
+      totalTransactions += block.transactions.length
+    }
+    this.metrics.totalTransactions = totalTransactions
+
+    // Update timestamps
+    if (chain.length > 0) {
+      this.metrics.timestamps.firstBlock = chain[0].timestamp
+      this.metrics.timestamps.lastBlock = chain[chain.length - 1].timestamp
+    }
+
+    // Calculate difficulty
+    if (chain.length > 0) {
+      this.metrics.difficulty = chain[chain.length - 1].difficulty
+    }
+
+    // Calculate average transactions per block
+    this.metrics.averageTransactionsPerBlock = totalTransactions / chain.length
+  }
+
+  /**
+   * Get current metrics
+   */
+  getMetrics() {
+    return {
+      ...this.metrics,
+      timestamp: Date.now(),
+    }
+  }
+}
+
+/**
+ * Proof of Work Consensus
+ */
+class ProofOfWorkConsensus {
+  constructor(config) {
+    this.config = config
+  }
+
+  async initialize(blockchain) {
+    this.blockchain = blockchain
+    return true
+  }
+
+  /**
+   * Validate a block
+   */
+  validateBlock(block) {
+    // Check if the block hash has the required number of leading zeros
+    return block.hash.startsWith("0".repeat(block.difficulty))
+  }
+
+  /**
+   * Prepare a block for mining
+   */
+  prepareBlock(block) {
+    // No special preparation needed for PoW
+    return block
+  }
+
+  /**
+   * Finalize a block after mining
+   */
+  finalizeBlock(block) {
+    // No special finalization needed for PoW
+    return block
+  }
+}
+
+/**
+ * Proof of Stake Consensus
+ */
+class ProofOfStakeConsensus {
+  constructor(config) {
+    this.config = config
+    this.stakeholders = new Map()
+  }
+
+  async initialize(blockchain) {
+    this.blockchain = blockchain
+
+    // Initialize stakeholders
+    // In a real implementation, this would load stakeholder data
+    return true
+  }
+
+  /**
+   * Validate a block
+   */
+  validateBlock(block) {
+    // In a real implementation, this would validate the block creator's stake
+    return true
+  }
+
+  /**
+   * Prepare a block for mining
+   */
+  prepareBlock(block) {
+    // Select a validator based on stake
+    const validator = this.selectValidator()
+
+    // Add validator info to block
+    block.validator = validator
+
+    return block
+  }
+
+  /**
+   * Finalize a block after mining
+   */
+  finalizeBlock(block) {
+    // No special finalization needed for PoS
+    return block
+  }
+
+  /**
+   * Select a validator based on stake
+   */
+  selectValidator() {
+    // In a real implementation, this would select a validator based on stake
+    return "validator-" + Math.random().toString(36).substring(2, 15)
+  }
+}
+
+/**
+ * Proof of Authority Consensus
+ */
+class ProofOfAuthorityConsensus {
+  constructor(config) {
+    this.config = config
+    this.authorities = new Set()
+  }
+
+  async initialize(blockchain) {
+    this.blockchain = blockchain
+
+    // Initialize authorities
+    // In a real implementation, this would load authority data
+    return true
+  }
+
+  /**
+   * Validate a block
+   */
+  validateBlock(block) {
+    // In a real implementation, this would validate the block creator's authority
+    return true
+  }
+
+  /**
+   * Prepare a block for mining
+   */
+  prepareBlock(block) {
+    // Select an authority
+    const authority = this.selectAuthority()
+
+    // Add authority info to block
+    block.authority = authority
+
+    return block
+  }
+
+  /**
+   * Finalize a block after mining
+   */
+  finalizeBlock(block) {
+    // No special finalization needed for PoA
+    return block
+  }
+
+  /**
+   * Select an authority
+   */
+  selectAuthority() {
+    // In a real implementation, this would select an authority based on a schedule
+    return "authority-" + Math.random().toString(36).substring(2, 15)
+  }
+}
+
+/**
+ * Delegated Proof of Stake Consensus
+ */
+class DelegatedProofOfStakeConsensus {
+  constructor(config) {
+    this.config = config
+    this.delegates = []
+    this.currentDelegateIndex = 0
+  }
+
+  async initialize(blockchain) {
+    this.blockchain = blockchain
+
+    // Initialize delegates
+    // In a real implementation, this would load delegate data
+    return true
+  }
+
+  /**
+   * Validate a block
+   */
+  validateBlock(block) {
+    // In a real implementation, this would validate the block creator's delegation
+    return true
+  }
+
+  /**
+   * Prepare a block for mining
+   */
+  prepareBlock(block) {
+    // Select a delegate
+    const delegate = this.selectDelegate()
+
+    // Add delegate info to block
+    block.delegate = delegate
+
+    return block
+  }
+
+  /**
+   * Finalize a block after mining
+   */
+  finalizeBlock(block) {
+    // Move to the next delegate
+    this.currentDelegateIndex = (this.currentDelegateIndex + 1) % this.delegates.length
+
+    return block
+  }
+
+  /**
+   * Select a delegate
+   */
+  selectDelegate() {
+    // In a real implementation, this would select a delegate based on a schedule
+    return "delegate-" + Math.random().toString(36).substring(2, 15)
+  }
+}
+
+/**
+ * Practical Byzantine Fault Tolerance Consensus
+ */
+class PBFTConsensus {
+  constructor(config) {
+    this.config = config
+    this.nodes = new Map()
+    this.prepareMessages = new Map()
+    this.commitMessages = new Map()
+  }
+
+  async initialize(blockchain) {
+    this.blockchain = blockchain
+
+    // Initialize nodes
+    // In a real implementation, this would load node data
+    return true
+  }
+
+  /**
+   * Validate a block
+   */
+  validateBlock(block) {
+    // In a real implementation, this would validate the block's consensus data
+    return true
+  }
+
+  /**
+   * Prepare a block for mining
+   */
+  prepareBlock(block) {
+    // Add consensus data to block
+    block.consensusData = {
+      phase: "pre-prepare",
+      view: 0,
+    }
+
+    return block
+  }
+
+  /**
+   * Finalize a block after mining
+   */
+  finalizeBlock(block) {
+    // In a real implementation, this would run the PBFT consensus protocol
+    // For this example, we'll simulate it
+
+    // Simulate prepare phase
+    block.consensusData.phase = "prepare"
+
+    // Simulate commit phase
+    block.consensusData.phase = "commit"
+
+    // Simulate finalize phase
+    block.consensusData.phase = "finalized"
+
+    return block
+  }
+}
+
+module.exports = BlockchainCore
+

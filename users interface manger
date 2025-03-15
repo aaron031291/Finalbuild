@@ -1,0 +1,3316 @@
+/**
+ * EdgeNativeUMaaS User Interface Manager
+ * 
+ * A comprehensive UI system for the EdgeNativeUMaaS platform that provides
+ * multiple interface options including web dashboards, command line interfaces,
+ * API endpoints, and immersive interfaces. This system handles visualization,
+ * user interaction, real-time updates, and adaptive interfaces across different
+ * devices and contexts.
+ */
+
+class UIManager {
+    constructor(system, config = {}) {
+      this.system = system;
+      this.initialized = false;
+      this.interfaces = new Map();
+      this.dashboards = new Map();
+      this.visualizations = new Map();
+      this.commandSets = new Map();
+      this.themes = new Map();
+      this.userPreferences = new Map();
+      this.activeConnections = new Map();
+      this.eventSubscriptions = new Map();
+      this.uiComponents = new Map();
+      this.layoutTemplates = new Map();
+      this.notificationQueue = [];
+      
+      // UI Components
+      this.webInterface = new WebInterface();
+      this.cliInterface = new CLIInterface();
+      this.apiInterface = new APIInterface();
+      this.immersiveInterface = new ImmersiveInterface();
+      this.dataVisualizer = new DataVisualizer();
+      this.notificationManager = new NotificationManager();
+      this.interactionManager = new InteractionManager();
+      this.accessibilityManager = new AccessibilityManager();
+      this.i18nManager = new I18nManager();
+      this.themeManager = new ThemeManager();
+      
+      // Default configuration
+      this.config = {
+        defaultInterface: 'web',
+        enabledInterfaces: ['web', 'cli', 'api', 'immersive'],
+        defaultTheme: 'system',
+        defaultLanguage: 'en',
+        refreshInterval: 5000, // 5 seconds
+        maxConnections: 1000,
+        maxNotifications: 100,
+        enableRealTimeUpdates: true,
+        enableAccessibility: true,
+        enableInternationalization: true,
+        enableCommandHistory: true,
+        enableUserPreferences: true,
+        enableDataExport: true,
+        enableVoiceCommands: false,
+        enableGestureControl: false,
+        secureMode: true,
+        debugMode: false,
+        ...config
+      };
+      
+      // UI state
+      this.state = {
+        status: 'initializing',
+        activeUsers: 0,
+        activeConnections: 0,
+        activeViews: {},
+        lastUpdate: null,
+        errors: {
+          count: 0,
+          lastError: null
+        }
+      };
+    }
+    
+    /**
+     * Initialize the UI Manager
+     */
+    async initialize() {
+      if (this.initialized) {
+        console.warn("UI Manager is already initialized");
+        return true;
+      }
+      
+      console.log("Initializing EdgeNativeUMaaS User Interface Manager...");
+      
+      try {
+        // Initialize UI components
+        await this.webInterface.initialize(this.config);
+        await this.cliInterface.initialize(this.config);
+        await this.apiInterface.initialize(this.config);
+        await this.immersiveInterface.initialize(this.config);
+        await this.dataVisualizer.initialize(this.config);
+        await this.notificationManager.initialize(this.config);
+        await this.interactionManager.initialize(this.config);
+        await this.accessibilityManager.initialize(this.config);
+        await this.i18nManager.initialize(this.config);
+        await this.themeManager.initialize(this.config);
+        
+        // Register default interfaces
+        await this.registerDefaultInterfaces();
+        
+        // Register default dashboards
+        await this.registerDefaultDashboards();
+        
+        // Register default visualizations
+        await this.registerDefaultVisualizations();
+        
+        // Register default command sets
+        await this.registerDefaultCommandSets();
+        
+        // Register default themes
+        await this.registerDefaultThemes();
+        
+        // Register default UI components
+        await this.registerDefaultUIComponents();
+        
+        // Register default layout templates
+        await this.registerDefaultLayoutTemplates();
+        
+        // Start real-time update service if enabled
+        if (this.config.enableRealTimeUpdates) {
+          await this.startRealTimeUpdates();
+        }
+        
+        this.initialized = true;
+        this.state.status = 'active';
+        console.log("User Interface Manager initialized successfully");
+        
+        return true;
+      } catch (error) {
+        console.error("Failed to initialize UI Manager:", error);
+        this.state.status = 'error';
+        this.state.errors.lastError = error.message;
+        this.state.errors.count++;
+        throw error;
+      }
+    }
+    
+    /**
+     * Register default interfaces
+     */
+    async registerDefaultInterfaces() {
+      console.log("Registering default interfaces...");
+      
+      // Web Interface
+      this.interfaces.set('web', {
+        id: 'web',
+        name: 'Web Dashboard',
+        description: 'Browser-based graphical user interface',
+        type: 'web',
+        enabled: this.config.enabledInterfaces.includes('web'),
+        config: {
+          port: 8080,
+          host: '0.0.0.0',
+          ssl: true,
+          maxConnections: this.config.maxConnections,
+          sessionTimeout: 3600000, // 1 hour
+          defaultDashboard: 'system-overview',
+          supportedBrowsers: ['chrome', 'firefox', 'safari', 'edge'],
+          responsive: true,
+          pwa: true
+        },
+        capabilities: [
+          'dashboards',
+          'visualizations',
+          'commands',
+          'notifications',
+          'user-preferences',
+          'data-export',
+          'real-time-updates'
+        ]
+      });
+      
+      // CLI Interface
+      this.interfaces.set('cli', {
+        id: 'cli',
+        name: 'Command Line Interface',
+        description: 'Text-based command line interface',
+        type: 'cli',
+        enabled: this.config.enabledInterfaces.includes('cli'),
+        config: {
+          port: 22,
+          host: '0.0.0.0',
+          maxConnections: 100,
+          sessionTimeout: 1800000, // 30 minutes
+          defaultCommandSet: 'core',
+          historySize: 1000,
+          autoComplete: true,
+          syntaxHighlighting: true,
+          multilineSupport: true
+        },
+        capabilities: [
+          'commands',
+          'scripting',
+          'batch-processing',
+          'piping',
+          'output-formatting',
+          'history'
+        ]
+      });
+      
+      // API Interface
+      this.interfaces.set('api', {
+        id: 'api',
+        name: 'API Interface',
+        description: 'RESTful and GraphQL API interface',
+        type: 'api',
+        enabled: this.config.enabledInterfaces.includes('api'),
+        config: {
+          port: 8443,
+          host: '0.0.0.0',
+          ssl: true,
+          maxConnections: 500,
+          rateLimit: {
+            enabled: true,
+            requestsPerMinute: 100,
+            burstLimit: 200
+          },
+          cors: {
+            enabled: true,
+            allowedOrigins: ['*'],
+            allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+            allowedHeaders: ['Content-Type', 'Authorization']
+          },
+          versions: ['v1', 'v2'],
+          defaultVersion: 'v2',
+          documentation: {
+            enabled: true,
+            format: 'openapi',
+            path: '/docs'
+          },
+          graphql: {
+            enabled: true,
+            path: '/graphql',
+            playground: true
+          }
+        },
+        capabilities: [
+          'rest',
+          'graphql',
+          'webhooks',
+          'streaming',
+          'batch-operations',
+          'versioning',
+          'documentation'
+        ]
+      });
+      
+      // Immersive Interface
+      this.interfaces.set('immersive', {
+        id: 'immersive',
+        name: 'Immersive Interface',
+        description: 'AR/VR/XR immersive interface',
+        type: 'immersive',
+        enabled: this.config.enabledInterfaces.includes('immersive'),
+        config: {
+          port: 8081,
+          host: '0.0.0.0',
+          ssl: true,
+          maxConnections: 50,
+          supportedDevices: ['oculus', 'vive', 'hololens', 'arkit', 'arcore'],
+          renderQuality: 'high',
+          spatialAudio: true,
+          hapticsEnabled: true,
+          interactionModes: ['controller', 'hand-tracking', 'gaze', 'voice'],
+          defaultInteractionMode: 'controller',
+          defaultEnvironment: 'data-center'
+        },
+        capabilities: [
+          '3d-visualization',
+          'spatial-interface',
+          'gesture-control',
+          'voice-commands',
+          'haptic-feedback',
+          'multi-user-collaboration',
+          'spatial-audio'
+        ]
+      });
+      
+      // Mobile Interface
+      this.interfaces.set('mobile', {
+        id: 'mobile',
+        name: 'Mobile Interface',
+        description: 'Mobile-optimized interface for smartphones and tablets',
+        type: 'mobile',
+        enabled: this.config.enabledInterfaces.includes('mobile'),
+        config: {
+          responsive: true,
+          touchOptimized: true,
+          offlineSupport: true,
+          pushNotifications: true,
+          biometricAuth: true,
+          defaultDashboard: 'mobile-overview',
+          gestureControls: true,
+          darkModeSupport: true
+        },
+        capabilities: [
+          'touch-interface',
+          'offline-mode',
+          'push-notifications',
+          'location-awareness',
+          'camera-integration',
+          'biometric-authentication'
+        ]
+      });
+      
+      // Voice Interface
+      this.interfaces.set('voice', {
+        id: 'voice',
+        name: 'Voice Interface',
+        description: 'Voice-controlled interface for hands-free operation',
+        type: 'voice',
+        enabled: this.config.enabledInterfaces.includes('voice'),
+        config: {
+          wakeWords: ['edge', 'system', 'computer'],
+          defaultWakeWord: 'edge',
+          naturalLanguageProcessing: true,
+          voiceRecognitionAccuracy: 'high',
+          textToSpeech: true,
+          voicePersonality: 'professional',
+          contextAwareness: true,
+          noiseReduction: true,
+          multilingualSupport: true
+        },
+        capabilities: [
+          'voice-commands',
+          'natural-language-processing',
+          'text-to-speech',
+          'contextual-responses',
+          'multi-language-support',
+          'voice-authentication'
+        ]
+      });
+      
+      console.log(`Registered ${this.interfaces.size} interfaces`);
+    }
+    
+    /**
+     * Register default dashboards
+     */
+    async registerDefaultDashboards() {
+      console.log("Registering default dashboards...");
+      
+      // System Overview Dashboard
+      this.dashboards.set('system-overview', {
+        id: 'system-overview',
+        name: 'System Overview',
+        description: 'High-level overview of the EdgeNativeUMaaS system',
+        type: 'web',
+        layout: 'grid',
+        refreshInterval: 10000, // 10 seconds
+        defaultTimeRange: '1h',
+        isDefault: true,
+        access: {
+          roles: ['admin', 'operator', 'user', 'viewer'],
+          public: false
+        },
+        panels: [
+          {
+            id: 'system-status',
+            type: 'status',
+            title: 'System Status',
+            width: 12,
+            height: 3,
+            position: { x: 0, y: 0 },
+            dataSource: 'system.status',
+            visualization: 'status-card'
+          },
+          {
+            id: 'resource-usage',
+            type: 'chart',
+            title: 'Resource Usage',
+            width: 12,
+            height: 9,
+            position: { x: 0, y: 3 },
+            dataSource: 'system.resources',
+            visualization: 'multi-metric-chart',
+            metrics: ['cpu', 'memory', 'network', 'storage']
+          },
+          {
+            id: 'active-nodes',
+            type: 'table',
+            title: 'Active Nodes',
+            width: 12,
+            height: 6,
+            position: { x: 12, y: 0 },
+            dataSource: 'system.nodes',
+            visualization: 'data-table',
+            columns: ['id', 'type', 'status', 'uptime', 'load']
+          },
+          {
+            id: 'recent-events',
+            type: 'feed',
+            title: 'Recent Events',
+            width: 12,
+            height: 6,
+            position: { x: 12, y: 6 },
+            dataSource: 'system.events',
+            visualization: 'event-feed',
+            limit: 10
+          },
+          {
+            id: 'quick-actions',
+            type: 'actions',
+            title: 'Quick Actions',
+            width: 6,
+            height: 6,
+            position: { x: 0, y: 12 },
+            visualization: 'action-buttons',
+            actions: ['restart', 'deploy', 'scale', 'backup']
+          },
+          {
+            id: 'system-health',
+            type: 'gauge',
+            title: 'System Health',
+            width: 6,
+            height: 6,
+            position: { x: 6, y: 12 },
+            dataSource: 'system.health',
+            visualization: 'health-gauge'
+          },
+          {
+            id: 'alerts',
+            type: 'alerts',
+            title: 'Active Alerts',
+            width: 12,
+            height: 6,
+            position: { x: 12, y: 12 },
+            dataSource: 'system.alerts',
+            visualization: 'alert-list'
+          }
+        ]
+      });
+      
+      // Performance Dashboard
+      this.dashboards.set('performance', {
+        id: 'performance',
+        name: 'Performance Metrics',
+        description: 'Detailed performance metrics and benchmarks',
+        type: 'web',
+        layout: 'grid',
+        refreshInterval: 15000, // 15 seconds
+        defaultTimeRange: '24h',
+        isDefault: false,
+        access: {
+          roles: ['admin', 'operator'],
+          public: false
+        },
+        panels: [
+          {
+            id: 'performance-overview',
+            type: 'chart',
+            title: 'Performance Overview',
+            width: 24,
+            height: 6,
+            position: { x: 0, y: 0 },
+            dataSource: 'system.performance',
+            visualization: 'time-series-chart',
+            metrics: ['throughput', 'latency', 'iops', 'requests_per_second']
+          },
+          {
+            id: 'cpu-performance',
+            type: 'chart',
+            title: 'CPU Performance',
+            width: 12,
+            height: 9,
+            position: { x: 0, y: 6 },
+            dataSource: 'system.cpu',
+            visualization: 'time-series-chart',
+            metrics: ['usage', 'load', 'temperature', 'frequency']
+          },
+          {
+            id: 'memory-performance',
+            type: 'chart',
+            title: 'Memory Performance',
+            width: 12,
+            height: 9,
+            position: { x: 12, y: 6 },
+            dataSource: 'system.memory',
+            visualization: 'time-series-chart',
+            metrics: ['usage', 'available', 'swap', 'page_faults']
+          },
+          {
+            id: 'network-performance',
+            type: 'chart',
+            title: 'Network Performance',
+            width: 12,
+            height: 9,
+            position: { x: 0, y: 15 },
+            dataSource: 'system.network',
+            visualization: 'time-series-chart',
+            metrics: ['throughput', 'packets', 'errors', 'latency']
+          },
+          {
+            id: 'storage-performance',
+            type: 'chart',
+            title: 'Storage Performance',
+            width: 12,
+            height: 9,
+            position: { x: 12, y: 15 },
+            dataSource: 'system.storage',
+            visualization: 'time-series-chart',
+            metrics: ['iops', 'throughput', 'latency', 'queue_depth']
+          },
+          {
+            id: 'performance-benchmarks',
+            type: 'table',
+            title: 'Performance Benchmarks',
+            width: 24,
+            height: 6,
+            position: { x: 0, y: 24 },
+            dataSource: 'system.benchmarks',
+            visualization: 'data-table',
+            columns: ['name', 'score', 'timestamp', 'comparison', 'status']
+          }
+        ]
+      });
+      
+      // Security Dashboard
+      this.dashboards.set('security', {
+        id: 'security',
+        name: 'Security Overview',
+        description: 'Security status, threats, and compliance',
+        type: 'web',
+        layout: 'grid',
+        refreshInterval: 30000, // 30 seconds
+        defaultTimeRange: '24h',
+        isDefault: false,
+        access: {
+          roles: ['admin', 'security'],
+          public: false
+        },
+        panels: [
+          {
+            id: 'security-status',
+            type: 'status',
+            title: 'Security Status',
+            width: 24,
+            height: 3,
+            position: { x: 0, y: 0 },
+            dataSource: 'security.status',
+            visualization: 'security-status-card'
+          },
+          {
+            id: 'active-threats',
+            type: 'table',
+            title: 'Active Threats',
+            width: 12,
+            height: 9,
+            position: { x: 0, y: 3 },
+            dataSource: 'security.threats',
+            visualization: 'threat-table',
+            columns: ['severity', 'type', 'source', 'target', 'timestamp', 'status']
+          },
+          {
+            id: 'vulnerabilities',
+            type: 'table',
+            title: 'Vulnerabilities',
+            width: 12,
+            height: 9,
+            position: { x: 12, y: 3 },
+            dataSource: 'security.vulnerabilities',
+            visualization: 'vulnerability-table',
+            columns: ['severity', 'component', 'description', 'discovered', 'status']
+          },
+          {
+            id: 'security-events',
+            type: 'chart',
+            title: 'Security Events',
+            width: 12,
+            height: 6,
+            position: { x: 0, y: 12 },
+            dataSource: 'security.events',
+            visualization: 'time-series-chart',
+            metrics: ['authentication', 'authorization', 'threats', 'vulnerabilities']
+          },
+          {
+            id: 'compliance-status',
+            type: 'compliance',
+            title: 'Compliance Status',
+            width: 12,
+            height: 6,
+            position: { x: 12, y: 12 },
+            dataSource: 'security.compliance',
+            visualization: 'compliance-status'
+          },
+          {
+            id: 'authentication-activity',
+            type: 'chart',
+            title: 'Authentication Activity',
+            width: 12,
+            height: 6,
+            position: { x: 0, y: 18 },
+            dataSource: 'security.authentication',
+            visualization: 'time-series-chart',
+            metrics: ['successful', 'failed', 'mfa']
+          },
+          {
+            id: 'security-actions',
+            type: 'actions',
+            title: 'Security Actions',
+            width: 12,
+            height: 6,
+            position: { x: 12, y: 18 },
+            visualization: 'action-buttons',
+            actions: ['scan', 'remediate', 'lockdown', 'report']
+          }
+        ]
+      });
+      
+      // Deployment Dashboard
+      this.dashboards.set('deployment', {
+        id: 'deployment',
+        name: 'Deployment Management',
+        description: 'Manage and monitor system deployments',
+        type: 'web',
+        layout: 'grid',
+        refreshInterval: 20000, // 20 seconds
+        defaultTimeRange: '7d',
+        isDefault: false,
+        access: {
+          roles: ['admin', 'operator', 'deployer'],
+          public: false
+        },
+        panels: [
+          {
+            id: 'deployment-status',
+            type: 'status',
+            title: 'Deployment Status',
+            width: 24,
+            height: 3,
+            position: { x: 0, y: 0 },
+            dataSource: 'deployment.status',
+            visualization: 'status-card'
+          },
+          {
+            id: 'active-deployments',
+            type: 'table',
+            title: 'Active Deployments',
+            width: 12,
+            height: 9,
+            position: { x: 0, y: 3 },
+            dataSource: 'deployment.active',
+            visualization: 'data-table',
+            columns: ['id', 'environment', 'version', 'status', 'uptime', 'health']
+          },
+          {
+            id: 'deployment-history',
+            type: 'table',
+            title: 'Deployment History',
+            width: 12,
+            height: 9,
+            position: { x: 12, y: 3 },
+            dataSource: 'deployment.history',
+            visualization: 'data-table',
+            columns: ['id', 'environment', 'version', 'timestamp', 'duration', 'status']
+          },
+          {
+            id: 'deployment-map',
+            type: 'map',
+            title: 'Deployment Map',
+            width: 24,
+            height: 9,
+            position: { x: 0, y: 12 },
+            dataSource: 'deployment.locations',
+            visualization: 'geo-map'
+          },
+          {
+            id: 'deployment-actions',
+            type: 'actions',
+            title: 'Deployment Actions',
+            width: 12,
+            height: 6,
+            position: { x: 0, y: 21 },
+            visualization: 'action-buttons',
+            actions: ['deploy', 'rollback', 'scale', 'migrate']
+          },
+          {
+            id: 'deployment-metrics',
+            type: 'chart',
+            title: 'Deployment Metrics',
+            width: 12,
+            height: 6,
+            position: { x: 12, y: 21 },
+            dataSource: 'deployment.metrics',
+            visualization: 'time-series-chart',
+            metrics: ['deployments', 'success_rate', 'rollbacks', 'avg_duration']
+          }
+        ]
+      });
+      
+      // Analytics Dashboard
+      this.dashboards.set('analytics', {
+        id: 'analytics',
+        name: 'System Analytics',
+        description: 'Advanced analytics and insights',
+        type: 'web',
+        layout: 'grid',
+        refreshInterval: 60000, // 1 minute
+        defaultTimeRange: '30d',
+        isDefault: false,
+        access: {
+          roles: ['admin', 'analyst'],
+          public: false
+        },
+        panels: [
+          {
+            id: 'usage-trends',
+            type: 'chart',
+            title: 'Usage Trends',
+            width: 24,
+            height: 6,
+            position: { x: 0, y: 0 },
+            dataSource: 'analytics.usage',
+            visualization: 'time-series-chart',
+            metrics: ['users', 'requests', 'compute_hours', 'data_processed']
+          },
+          {
+            id: 'performance-trends',
+            type: 'chart',
+            title: 'Performance Trends',
+            width: 12,
+            height: 9,
+            position: { x: 0, y: 6 },
+            dataSource: 'analytics.performance',
+            visualization: 'time-series-chart',
+            metrics: ['response_time', 'throughput', 'error_rate', 'availability']
+          },
+          {
+            id: 'resource-trends',
+            type: 'chart',
+            title: 'Resource Trends',
+            width: 12,
+            height: 9,
+            position: { x: 12, y: 6 },
+            dataSource: 'analytics.resources',
+            visualization: 'time-series-chart',
+            metrics: ['cpu_usage', 'memory_usage', 'network_usage', 'storage_usage']
+          },
+          {
+            id: 'anomaly-detection',
+            type: 'anomalies',
+            title: 'Anomaly Detection',
+            width: 12,
+            height: 6,
+            position: { x: 0, y: 15 },
+            dataSource: 'analytics.anomalies',
+            visualization: 'anomaly-chart'
+          },
+          {
+            id: 'predictive-insights',
+            type: 'predictions',
+            title: 'Predictive Insights',
+            width: 12,
+            height: 6,
+            position: { x: 12, y: 15 },
+            dataSource: 'analytics.predictions',
+            visualization: 'prediction-chart'
+          },
+          {
+            id: 'usage-breakdown',
+            type: 'chart',
+            title: 'Usage Breakdown',
+            width: 12,
+            height: 9,
+            position: { x: 0, y: 21 },
+            dataSource: 'analytics.usage_breakdown',
+            visualization: 'pie-chart'
+          },
+          {
+            id: 'cost-analysis',
+            type: 'chart',
+            title: 'Cost Analysis',
+            width: 12,
+            height: 9,
+            position: { x: 12, y: 21 },
+            dataSource: 'analytics.costs',
+            visualization: 'bar-chart'
+          }
+        ]
+      });
+      
+      // Mobile Dashboard
+      this.dashboards.set('mobile-overview', {
+        id: 'mobile-overview',
+        name: 'Mobile Overview',
+        description: 'Mobile-optimized system overview',
+        type: 'mobile',
+        layout: 'vertical',
+        refreshInterval: 30000, // 30 seconds
+        defaultTimeRange: '1h',
+        isDefault: true,
+        access: {
+          roles: ['admin', 'operator', 'user', 'viewer'],
+          public: false
+        },
+        panels: [
+          {
+            id: 'mobile-status',
+            type: 'status',
+            title: 'System Status',
+            width: 24,
+            height: 3,
+            position: { x: 0, y: 0 },
+            dataSource: 'system.status',
+            visualization: 'status-card-mobile'
+          },
+          {
+            id: 'mobile-alerts',
+            type: 'alerts',
+            title: 'Active Alerts',
+            width: 24,
+            height: 6,
+            position: { x: 0, y: 3 },
+            dataSource: 'system.alerts',
+            visualization: 'alert-list-mobile'
+          },
+          {
+            id: 'mobile-resources',
+            type: 'chart',
+            title: 'Resource Usage',
+            width: 24,
+            height: 9,
+            position: { x: 0, y: 9 },
+            dataSource: 'system.resources',
+            visualization: 'resource-gauge-mobile',
+            metrics: ['cpu', 'memory', 'network', 'storage']
+          },
+          {
+            id: 'mobile-actions',
+            type: 'actions',
+            title: 'Quick Actions',
+            width: 24,
+            height: 6,
+            position: { x: 0, y: 18 },
+            visualization: 'action-buttons-mobile',
+            actions: ['restart', 'deploy', 'scale', 'backup']
+          }
+        ]
+      });
+      
+      console.log(`Registered ${this.dashboards.size} dashboards`);
+    }
+    
+    /**
+     * Register default visualizations
+     */
+    async registerDefaultVisualizations() {
+      console.log("Registering default visualizations...");
+      
+      // Status Card Visualization
+      this.visualizations.set('status-card', {
+        id: 'status-card',
+        name: 'Status Card',
+        description: 'Displays system status information',
+        type: 'card',
+        dataTypes: ['status'],
+        config: {
+          showIcon: true,
+          showDetails: true,
+          showTimestamp: true,
+          colorCoded: true
+        },
+        renderer: 'status-card-renderer'
+      });
+      
+      // Time Series Chart Visualization
+      this.visualizations.set('time-series-chart', {
+        id: 'time-series-chart',
+        name: 'Time Series Chart',
+        description: 'Displays time-based metrics',
+        type: 'chart',
+        dataTypes: ['time-series'],
+        config: {
+          chartType: 'line',
+          showLegend: true,
+          showTooltips: true,
+          showThresholds: true,
+          autoScale: true,
+          stacked: false,
+          smoothing: true,
+          interpolation: 'linear'
+        },
+        renderer: 'time-series-renderer'
+      });
+      
+      // Bar Chart Visualization
+      this.visualizations.set('bar-chart', {
+        id: 'bar-chart',
+        name: 'Bar Chart',
+        description: 'Displays categorical data',
+        type: 'chart',
+        dataTypes: ['categorical'],
+        config: {
+          orientation: 'vertical',
+          showLegend: true,
+          showTooltips: true,
+          showValues: true,
+          stacked: false,
+          sortable: true,
+          colorScheme: 'category10'
+        },
+        renderer: 'bar-chart-renderer'
+      });
+      
+      // Pie Chart Visualization
+      this.visualizations.set('pie-chart', {
+        id: 'pie-chart',
+        name: 'Pie Chart',
+        description: 'Displays proportional data',
+        type: 'chart',
+        dataTypes: ['proportional'],
+        config: {
+          donut: false,
+          showLegend: true,
+          showTooltips: true,
+          showPercentages: true,
+          showLabels: true,
+          sortable: true,
+          colorScheme: 'category10'
+        },
+        renderer: 'pie-chart-renderer'
+      });
+      
+      // Data Table Visualization
+      this.visualizations.set('data-table', {
+        id: 'data-table',
+        name: 'Data Table',
+        description: 'Displays tabular data',
+        type: 'table',
+        dataTypes: ['tabular'],
+        config: {
+          paginated: true,
+          pageSize: 10,
+          sortable: true,
+          filterable: true,
+          exportable: true,
+          resizableColumns: true,
+          highlightRows: true,
+          alternateRowColors: true
+        },
+        renderer: 'data-table-renderer'
+      });
+      
+      // Gauge Visualization
+      this.visualizations.set('health-gauge', {
+        id: 'health-gauge',
+        name: 'Health Gauge',
+        description: 'Displays health or progress metrics',
+        type: 'gauge',
+        dataTypes: ['gauge'],
+        config: {
+          min: 0,
+          max: 100,
+          thresholds: [
+            { value: 30, color: 'red' },
+            { value: 60, color: 'yellow' },
+            { value: 100, color: 'green' }
+          ],
+          showValue: true,
+          showMinMax: true,
+          animateTransitions: true,
+          colorArc: true
+        },
+        renderer: 'gauge-renderer'
+      });
+      
+      // Event Feed Visualization
+      this.visualizations.set('event-feed', {
+        id: 'event-feed',
+        name: 'Event Feed',
+        description: 'Displays a feed of events or activities',
+        type: 'feed',
+        dataTypes: ['events'],
+        config: {
+          maxItems: 50,
+          groupSimilar: true,
+          showTimestamp: true,
+          showIcon: true,
+          showSource: true,
+          autoRefresh: true,
+          refreshInterval: 10000
+        },
+        renderer: 'event-feed-renderer'
+      });
+      
+      // Alert List Visualization
+      this.visualizations.set('alert-list', {
+        id: 'alert-list',
+        name: 'Alert List',
+        description: 'Displays system alerts and warnings',
+        type: 'alerts',
+        dataTypes: ['alerts'],
+        config: {
+          maxItems: 50,
+          groupSimilar: true,
+          showTimestamp: true,
+          showSeverity: true,
+          showSource: true,
+          autoRefresh: true,
+          refreshInterval: 10000,
+          colorCoded: true
+        },
+        renderer: 'alert-list-renderer'
+      });
+      
+      // Action Buttons Visualization
+      this.visualizations.set('action-buttons', {
+        id: 'action-buttons',
+        name: 'Action Buttons',
+        description: 'Displays actionable buttons',
+        type: 'actions',
+        dataTypes: ['actions'],
+        config: {
+          buttonSize: 'medium',
+          showIcons: true,
+          showLabels: true,
+          confirmDangerous: true,
+          layout: 'grid',
+          colorCoded: true
+        },
+        renderer: 'action-buttons-renderer'
+      });
+      
+      // Geo Map Visualization
+      this.visualizations.set('geo-map', {
+        id: 'geo-map',
+        name: 'Geographic Map',
+        description: 'Displays geographic data on a map',
+        type: 'map',
+        dataTypes: ['geo'],
+        config: {
+          mapType: 'world',
+          zoomLevel: 2,
+          showLegend: true,
+          showTooltips: true,
+          clusterMarkers: true,
+          heatmap: false,
+          colorScheme: 'viridis'
+        },
+        renderer: 'geo-map-renderer'
+      });
+      
+      // Network Graph Visualization
+      this.visualizations.set('network-graph', {
+        id: 'network-graph',
+        name: 'Network Graph',
+        description: 'Displays network relationships',
+        type: 'graph',
+        dataTypes: ['network'],
+        config: {
+          layout: 'force-directed',
+          showLabels: true,
+          showTooltips: true,
+          draggableNodes: true,
+          highlightConnections: true,
+          nodeSize: 'degree',
+          edgeWidth: 'weight',
+          colorScheme: 'category20'
+        },
+        renderer: 'network-graph-renderer'
+      });
+      
+      // Heatmap Visualization
+      this.visualizations.set('heatmap', {
+        id: 'heatmap',
+        name: 'Heatmap',
+        description: 'Displays intensity of data across two dimensions',
+        type: 'chart',
+        dataTypes: ['matrix'],
+        config: {
+          showLegend: true,
+          showTooltips: true,
+          showValues: false,
+          colorScheme: 'viridis',
+          cellSize: 'auto',
+          cellPadding: 1
+        },
+        renderer: 'heatmap-renderer'
+      });
+      
+      // 3D Visualization
+      this.visualizations.set('3d-visualization', {
+        id: '3d-visualization',
+        name: '3D Visualization',
+        description: 'Displays data in three dimensions',
+        type: 'immersive',
+        dataTypes: ['3d'],
+        config: {
+          rotatable: true,
+          zoomable: true,
+          showAxes: true,
+          showLabels: true,
+          showTooltips: true,
+          lighting: true,
+          shadows: true,
+          quality: 'high',
+          colorScheme: 'spectral'
+        },
+        renderer: '3d-visualization-renderer'
+      });
+      
+      // Multi-metric Chart
+      this.visualizations.set('multi-metric-chart', {
+        id: 'multi-metric-chart',
+        name: 'Multi-metric Chart',
+        description: 'Displays multiple metrics in a single chart',
+        type: 'chart',
+        dataTypes: ['time-series'],
+        config: {
+          chartTypes: {
+            cpu: 'line',
+            memory: 'area',
+            network: 'bar',
+            storage: 'line'
+          },
+          showLegend: true,
+          showTooltips: true,
+          syncedTooltips: true,
+          syncedZoom: true,
+          stacked: false,
+          colorScheme: 'category10'
+        },
+        renderer: 'multi-metric-renderer'
+      });
+      
+      // Security Status Card
+      this.visualizations.set('security-status-card', {
+        id: 'security-status-card',
+        name: 'Security Status Card',
+        description: 'Displays security status information',
+        type: 'card',
+        dataTypes: ['security-status'],
+        config: {
+          showIcon: true,
+          showDetails: true,
+          showTimestamp: true,
+          colorCoded: true,
+          showThreatLevel: true,
+          showVulnerabilities: true
+        },
+        renderer: 'security-status-renderer'
+      });
+      
+      // Compliance Status
+      this.visualizations.set('compliance-status', {
+        id: 'compliance-status',
+        name: 'Compliance Status',
+        description: 'Displays compliance status information',
+        type: 'compliance',
+        dataTypes: ['compliance'],
+        config: {
+          showFrameworks: true,
+          showControls: true,
+          showProgress: true,
+          colorCoded: true,
+          expandable: true
+        },
+        renderer: 'compliance-status-renderer'
+      });
+      
+      // Mobile-optimized visualizations
+      this.visualizations.set('status-card-mobile', {
+        id: 'status-card-mobile',
+        name: 'Mobile Status Card',
+        description: 'Mobile-optimized status card',
+        type: 'card',
+        dataTypes: ['status'],
+        config: {
+          showIcon: true,
+          showDetails: false,
+          showTimestamp: true,
+          colorCoded: true,
+          touchFriendly: true
+        },
+        renderer: 'status-card-mobile-renderer'
+      });
+      
+      this.visualizations.set('alert-list-mobile', {
+        id: 'alert-list-mobile',
+        name: 'Mobile Alert List',
+        description: 'Mobile-optimized alert list',
+        type: 'alerts',
+        dataTypes: ['alerts'],
+        config: {
+          maxItems: 10,
+          groupSimilar: true,
+          showTimestamp: true,
+          showSeverity: true,
+          showSource: false,
+          autoRefresh: true,
+          refreshInterval: 30000,
+          colorCoded: true,
+          touchFriendly: true
+        },
+        renderer: 'alert-list-mobile-renderer'
+      });
+      
+      this.visualizations.set('resource-gauge-mobile', {
+        id: 'resource-gauge-mobile',
+        name: 'Mobile Resource Gauge',
+        description: 'Mobile-optimized resource gauge',
+        type: 'gauge',
+        dataTypes: ['gauge'],
+        config: {
+          min: 0,
+          max: 100,
+          thresholds: [
+            { value: 30, color: 'red' },
+            { value: 60, color: 'yellow' },
+            { value: 100, color: 'green' }
+          ],
+          showValue: true,
+          showMinMax: false,
+          animateTransitions: true,
+          colorArc: true,
+          touchFriendly: true
+        },
+        renderer: 'gauge-mobile-renderer'
+      });
+      
+      this.visualizations.set('action-buttons-mobile', {
+        id: 'action-buttons-mobile',
+        name: 'Mobile Action Buttons',
+        description: 'Mobile-optimized action buttons',
+        type: 'actions',
+        dataTypes: ['actions'],
+        config: {
+          buttonSize: 'large',
+          showIcons: true,
+          showLabels: true,
+          confirmDangerous: true,
+          layout: 'vertical',
+          colorCoded: true,
+          touchFriendly: true
+        },
+        renderer: 'action-buttons-mobile-renderer'
+      });
+      
+      console.log(`Registered ${this.visualizations.size} visualizations`);
+    }
+    
+    /**
+     * Register default command sets
+     */
+    async registerDefaultCommandSets() {
+      console.log("Registering default command sets...");
+      
+      // Core Command Set
+      this.commandSets.set('core', {
+        id: 'core',
+        name: 'Core Commands',
+        description: 'Essential system commands',
+        type: 'cli',
+        commands: [
+          {
+            name: 'help',
+            description: 'Display help information',
+            usage: 'help [command]',
+            examples: ['help', 'help status'],
+            handler: 'help-command-handler'
+          },
+          {
+            name: 'status',
+            description: 'Display system status',
+            usage: 'status [component]',
+            examples: ['status', 'status network'],
+            handler: 'status-command-handler'
+          },
+          {
+            name: 'list',
+            description: 'List system resources',
+            usage: 'list <resource-type>',
+            examples: ['list nodes', 'list deployments'],
+            handler: 'list-command-handler'
+          },
+          {
+            name: 'get',
+            description: 'Get detailed information about a resource',
+            usage: 'get <resource-type> <resource-id>',
+            examples: ['get node node-1', 'get deployment dep-123'],
+            handler: 'get-command-handler'
+          },
+          {
+            name: 'create',
+            description: 'Create a new resource',
+            usage: 'create <resource-type> [options]',
+            examples: ['create deployment --template=standard --env=prod'],
+            handler: 'create-command-handler'
+          },
+          {
+            name: 'update',
+            description: 'Update an existing resource',
+            usage: 'update <resource-type> <resource-id> [options]',
+            examples: ['update node node-1 --status=maintenance'],
+            handler: 'update-command-handler'
+          },
+          {
+            name: 'delete',
+            description: 'Delete a resource',
+            usage: 'delete <resource-type> <resource-id> [options]',
+            examples: ['delete deployment dep-123 --force'],
+            handler: 'delete-command-handler'
+          },
+          {
+            name: 'exec',
+            description: 'Execute a command on a node',
+            usage: 'exec <node-id> <command>',
+            examples: ['exec node-1 "ls -la"'],
+            handler: 'exec-command-handler'
+          },
+          {
+            name: 'logs',
+            description: 'View logs',
+            usage: 'logs <resource-type> <resource-id> [options]',
+            examples: ['logs node node-1 --tail=100', 'logs deployment dep-123 --follow'],
+            handler: 'logs-command-handler'
+          },
+          {
+            name: 'config',
+            description: 'Manage configuration',
+            usage: 'config <action> [key] [value]',
+            examples: ['config get network.port', 'config set logging.level debug'],
+            handler: 'config-command-handler'
+          }
+        ]
+      });
+      
+      // Deployment Command Set
+      this.commandSets.set('deployment', {
+        id: 'deployment',
+        name: 'Deployment Commands',
+        description: 'Commands for managing deployments',
+        type: 'cli',
+        commands: [
+          {
+            name: 'deploy',
+            description: 'Deploy a new instance',
+            usage: 'deploy <template> <environment> [options]',
+            examples: ['deploy standard production --replicas=3'],
+            handler: 'deploy-command-handler'
+          },
+          {
+            name: 'scale',
+            description: 'Scale a deployment',
+            usage: 'scale <deployment-id> <replicas>',
+            examples: ['scale dep-123 5'],
+            handler: 'scale-command-handler'
+          },
+          {
+            name: 'rollback',
+            description: 'Rollback a deployment',
+            usage: 'rollback <deployment-id> [version]',
+            examples: ['rollback dep-123', 'rollback dep-123 v1.2.3'],
+            handler: 'rollback-command-handler'
+          },
+          {
+            name: 'migrate',
+            description: 'Migrate a deployment',
+            usage: 'migrate <deployment-id> <target-environment>',
+            examples: ['migrate dep-123 production'],
+            handler: 'migrate-command-handler'
+          },
+          {
+            name: 'backup',
+            description: 'Backup a deployment',
+            usage: 'backup <deployment-id> [options]',
+            examples: ['backup dep-123 --full'],
+            handler: 'backup-command-handler'
+          },
+          {
+            name: 'restore',
+            description: 'Restore a deployment from backup',
+            usage: 'restore <deployment-id> <backup-id>',
+            examples: ['restore dep-123 backup-456'],
+            handler: 'restore-command-handler'
+          },
+          {
+            name: 'status',
+            description: 'Check deployment status',
+            usage: 'status <deployment-id>',
+            examples: ['status dep-123'],
+            handler: 'deployment-status-handler'
+          },
+          {
+            name: 'logs',
+            description: 'View deployment logs',
+            usage: 'logs <deployment-id> [options]',
+            examples: ['logs dep-123 --tail=100 --follow'],
+            handler: 'deployment-logs-handler'
+          }
+        ]
+      });
+      
+      // Security Command Set
+      this.commandSets.set('security', {
+        id: 'security',
+        name: 'Security Commands',
+        description: 'Commands for managing security',
+        type: 'cli',
+        commands: [
+          {
+            name: 'scan',
+            description: 'Perform a security scan',
+            usage: 'scan [target] [options]',
+            examples: ['scan', 'scan node-1 --deep'],
+            handler: 'scan-command-handler'
+          },
+          {
+            name: 'threats',
+            description: 'List active threats',
+            usage: 'threats [options]',
+            examples: ['threats', 'threats --severity=high'],
+            handler: 'threats-command-handler'
+          },
+          {
+            name: 'vulnerabilities',
+            description: 'List vulnerabilities',
+            usage: 'vulnerabilities [options]',
+            examples: ['vulnerabilities', 'vulnerabilities --severity=critical'],
+            handler: 'vulnerabilities-command-handler'
+          },
+          {
+            name: 'compliance',
+            description: 'Check compliance status',
+            usage: 'compliance [framework]',
+            examples: ['compliance', 'compliance gdpr'],
+            handler: 'compliance-command-handler'
+          },
+          {
+            name: 'users',
+            description: 'Manage users',
+            usage: 'users <action> [username] [options]',
+            examples: ['users list', 'users create john --role=admin'],
+            handler: 'users-command-handler'
+          },
+          {
+            name: 'roles',
+            description: 'Manage roles',
+            usage: 'roles <action> [role] [options]',
+            examples: ['roles list', 'roles create analyst --permissions="read:*"'],
+            handler: 'roles-command-handler'
+          },
+          {
+            name: 'audit',
+            description: 'View audit logs',
+            usage: 'audit [options]',
+            examples: ['audit --user=admin --action=login --limit=50'],
+            handler: 'audit-command-handler'
+          },
+          {
+            name: 'encrypt',
+            description: 'Encrypt data',
+            usage: 'encrypt <data> [options]',
+            examples: ['encrypt "secret data" --key=key1'],
+            handler: 'encrypt-command-handler'
+          },
+          {
+            name: 'decrypt',
+            description: 'Decrypt data',
+            usage: 'decrypt <encrypted-data> [options]',
+            examples: ['decrypt "encrypted-string" --key=key1'],
+            handler: 'decrypt-command-handler'
+          }
+        ]
+      });
+      
+      // Monitoring Command Set
+      this.commandSets.set('monitoring', {
+        id: 'monitoring',
+        name: 'Monitoring Commands',
+        description: 'Commands for system monitoring',
+        type: 'cli',
+        commands: [
+          {
+            name: 'metrics',
+            description: 'View system metrics',
+            usage: 'metrics [component] [options]',
+            examples: ['metrics', 'metrics cpu --interval=5s'],
+            handler: 'metrics-command-handler'
+          },
+          {
+            name: 'alerts',
+            description: 'View active alerts',
+            usage: 'alerts [options]',
+            examples: ['alerts', 'alerts --severity=critical'],
+            handler: 'alerts-command-handler'
+          },
+          {
+            name: 'watch',
+            description: 'Watch a resource in real-time',
+            usage: 'watch <resource-type> <resource-id> [options]',
+            examples: ['watch node node-1 --refresh=2s'],
+            handler: 'watch-command-handler'
+          },
+          {
+            name: 'top',
+            description: 'Show top resource usage',
+            usage: 'top [resource-type] [options]',
+            examples: ['top', 'top nodes --sort=cpu'],
+            handler: 'top-command-handler'
+          },
+          {
+            name: 'health',
+            description: 'Check system health',
+            usage: 'health [component]',
+            examples: ['health', 'health network'],
+            handler: 'health-command-handler'
+          },
+          {
+            name: 'benchmark',
+            description: 'Run system benchmark',
+            usage: 'benchmark [type] [options]',
+            examples: ['benchmark', 'benchmark network --duration=30s'],
+            handler: 'benchmark-command-handler'
+          }
+        ]
+      });
+      
+      // Utility Command Set
+      this.commandSets.set('utility', {
+        id: 'utility',
+        name: 'Utility Commands',
+        description: 'Utility and helper commands',
+        type: 'cli',
+        commands: [
+          {
+            name: 'version',
+            description: 'Show system version',
+            usage: 'version',
+            examples: ['version'],
+            handler: 'version-command-handler'
+          },
+          {
+            name: 'export',
+            description: 'Export data',
+            usage: 'export <resource-type> [options]',
+            examples: ['export metrics --format=csv --from=1h'],
+            handler: 'export-command-handler'
+          },
+          {
+            name: 'import',
+            description: 'Import data',
+            usage: 'import <resource-type> <file> [options]',
+            examples: ['import config config.json'],
+            handler: 'import-command-handler'
+          },
+          {
+            name: 'convert',
+            description: 'Convert data between formats',
+            usage: 'convert <input-file> <output-format>',
+            examples: ['convert data.json yaml'],
+            handler: 'convert-command-handler'
+          },
+          {
+            name: 'script',
+            description: 'Run a script',
+            usage: 'script <file> [args...]',
+            examples: ['script backup.js --all'],
+            handler: 'script-command-handler'
+          },
+          {
+            name: 'schedule',
+            description: 'Schedule a command',
+            usage: 'schedule <time> <command>',
+            examples: ['schedule "0 0 * * *" backup dep-123'],
+            handler: 'schedule-command-handler'
+          },
+          {
+            name: 'history',
+            description: 'View command history',
+            usage: 'history [options]',
+            examples: ['history', 'history --limit=50'],
+            handler: 'history-command-handler'
+          }
+        ]
+      });
+      
+      console.log(`Registered ${this.commandSets.size} command sets`);
+    }
+    
+    /**
+     * Register default themes
+     */
+    async registerDefaultThemes() {
+      console.log("Registering default themes...");
+      
+      // System Theme (auto-detects system preference)
+      this.themes.set('system', {
+        id: 'system',
+        name: 'System',
+        description: 'Follows system light/dark preference',
+        type: 'auto',
+        isDefault: true,
+        variables: {
+          // These are fallbacks if system preference can't be detected
+          light: {
+            'background-primary': '#ffffff',
+            'background-secondary': '#f5f5f5',
+            'background-tertiary': '#e0e0e0',
+            'text-primary': '#212121',
+            'text-secondary': '#757575',
+            'text-tertiary': '#9e9e9e',
+            'accent-primary': '#2196f3',
+            'accent-secondary': '#1976d2',
+            'success': '#4caf50',
+            'warning': '#ff9800',
+            'error': '#f44336',
+            'info': '#2196f3'
+          },
+          dark: {
+            'background-primary': '#121212',
+            'background-secondary': '#1e1e1e',
+            'background-tertiary': '#2c2c2c',
+            'text-primary': '#ffffff',
+            'text-secondary': '#b0b0b0',
+            'text-tertiary': '#757575',
+            'accent-primary': '#2196f3',
+            'accent-secondary': '#64b5f6',
+            'success': '#81c784',
+            'warning': '#ffb74d',
+            'error': '#e57373',
+            'info': '#64b5f6'
+          }
+        }
+      });
+      
+      // Light Theme
+      this.themes.set('light', {
+        id: 'light',
+        name: 'Light',
+        description: 'Clean light theme',
+        type: 'light',
+        isDefault: false,
+        variables: {
+          'background-primary': '#ffffff',
+          'background-secondary': '#f5f5f5',
+          'background-tertiary': '#e0e0e0',
+          'text-primary': '#212121',
+          'text-secondary': '#757575',
+          'text-tertiary': '#9e9e9e',
+          'accent-primary': '#2196f3',
+          'accent-secondary': '#1976d2',
+          'success': '#4caf50',
+          'warning': '#ff9800',
+          'error': '#f44336',
+          'info': '#2196f3'
+        }
+      });
+      
+      // Dark Theme
+      this.themes.set('dark', {
+        id: 'dark',
+        name: 'Dark',
+        description: 'Modern dark theme',
+        type: 'dark',
+        isDefault: false,
+        variables: {
+          'background-primary': '#121212',
+          'background-secondary': '#1e1e1e',
+          'background-tertiary': '#2c2c2c',
+          'text-primary': '#ffffff',
+          'text-secondary': '#b0b0b0',
+          'text-tertiary': '#757575',
+          'accent-primary': '#2196f3',
+          'accent-secondary': '#64b5f6',
+          'success': '#81c784',
+          'warning': '#ffb74d',
+          'error': '#e57373',
+          'info': '#64b5f6'
+        }
+      });
+      
+      // High Contrast Theme
+      this.themes.set('high-contrast', {
+        id: 'high-contrast',
+        name: 'High Contrast',
+        description: 'High contrast theme for accessibility',
+        type: 'high-contrast',
+        isDefault: false,
+        variables: {
+          'background-primary': '#000000',
+          'background-secondary': '#121212',
+          'background-tertiary': '#1e1e1e',
+          'text-primary': '#ffffff',
+          'text-secondary': '#f0f0f0',
+          'text-tertiary': '#e0e0e0',
+          'accent-primary': '#ffff00',
+          'accent-secondary': '#00ffff',
+          'success': '#00ff00',
+          'warning': '#ffff00',
+          'error': '#ff0000',
+          'info': '#00ffff'
+        }
+      });
+      
+      // Blue Theme
+      this.themes.set('blue', {
+        id: 'blue',
+        name: 'Blue',
+        description: 'Blue-focused theme',
+        type: 'custom',
+        isDefault: false,
+        variables: {
+          'background-primary': '#f0f8ff',
+          'background-secondary': '#e3f2fd',
+          'background-tertiary': '#bbdefb',
+          'text-primary': '#0d47a1',
+          'text-secondary': '#1976d2',
+          'text-tertiary': '#2196f3',
+          'accent-primary': '#1565c0',
+          'accent-secondary': '#0d47a1',
+          'success': '#4caf50',
+          'warning': '#ff9800',
+          'error': '#f44336',
+          'info': '#2196f3'
+        }
+      });
+      
+      // Dark Blue Theme
+      this.themes.set('dark-blue', {
+        id: 'dark-blue',
+        name: 'Dark Blue',
+        description: 'Dark blue-focused theme',
+        type: 'dark',
+        isDefault: false,
+        variables: {
+          'background-primary': '#0a1929',
+          'background-secondary': '#0d2339',
+          'background-tertiary': '#102c44',
+          'text-primary': '#ffffff',
+          'text-secondary': '#b0b0b0',
+          'text-tertiary': '#757575',
+          'accent-primary': '#29b6f6',
+          'accent-secondary': '#0288d1',
+          'success': '#81c784',
+          'warning': '#ffb74d',
+          'error': '#e57373',
+          'info': '#64b5f6'
+        }
+      });
+      
+      console.log(`Registered ${this.themes.size} themes`);
+    }
+    
+    /**
+     * Register default UI components
+     */
+    async registerDefaultUIComponents() {
+      console.log("Registering default UI components...");
+      
+      // Header Component
+      this.uiComponents.set('header', {
+        id: 'header',
+        name: 'Header',
+        description: 'Main application header',
+        type: 'layout',
+        config: {
+          showLogo: true,
+          showTitle: true,
+          showNavigation: true,
+          showSearch: true,
+          showUserMenu: true,
+          showNotifications: true,
+          sticky: true,
+          height: 64
+        },
+        renderer: 'header-renderer'
+      });
+      
+      // Sidebar Component
+      this.uiComponents.set('sidebar', {
+        id: 'sidebar',
+        name: 'Sidebar',
+        description: 'Main navigation sidebar',
+        type: 'navigation',
+        config: {
+          collapsible: true,
+          defaultCollapsed: false,
+          showIcons: true,
+          showLabels: true,
+          groupItems: true,
+          width: 240,
+          position: 'left'
+        },
+        renderer: 'sidebar-renderer'
+      });
+      
+      // Footer Component
+      this.uiComponents.set('footer', {
+        id: 'footer',
+        name: 'Footer',
+        description: 'Application footer',
+        type: 'layout',
+        config: {
+          showCopyright: true,
+          showVersion: true,
+          showLinks: true,
+          sticky: false,
+          height: 48
+        },
+        renderer: 'footer-renderer'
+      });
+      
+      // Dashboard Grid Component
+      this.uiComponents.set('dashboard-grid', {
+        id: 'dashboard-grid',
+        name: 'Dashboard Grid',
+        description: 'Grid layout for dashboards',
+        type: 'layout',
+        config: {
+          columns: 24,
+          rowHeight: 50,
+          margin: 10,
+          draggable: true,
+          resizable: true,
+          responsive: true,
+          compactType: 'vertical'
+        },
+        renderer: 'dashboard-grid-renderer'
+      });
+      
+      // Panel Component
+      this.uiComponents.set('panel', {
+        id: 'panel',
+        name: 'Panel',
+        description: 'Container for dashboard content',
+        type: 'container',
+        config: {
+          showHeader: true,
+          showTitle: true,
+          showControls: true,
+          collapsible: true,
+          draggable: true,
+          resizable: true,
+          removable: true,
+          bordered: true,
+          shadow: true,
+          padding: 16
+        },
+        renderer: 'panel-renderer'
+      });
+      
+      // Tabs Component
+      this.uiComponents.set('tabs', {
+        id: 'tabs',
+        name: 'Tabs',
+        description: 'Tabbed content container',
+        type: 'container',
+        config: {
+          position: 'top',
+          showIcons: true,
+          showLabels: true,
+          closable: true,
+          draggable: true,
+          addButton: true,
+          overflow: 'dropdown'
+        },
+        renderer: 'tabs-renderer'
+      });
+      
+      // Modal Component
+      this.uiComponents.set('modal', {
+        id: 'modal',
+        name: 'Modal',
+        description: 'Modal dialog',
+        type: 'overlay',
+        config: {
+          showHeader: true,
+          showFooter: true,
+          closeOnEscape: true,
+          closeOnOutsideClick: true,
+          draggable: true,
+          resizable: true,
+          centered: true,
+          maxWidth: '80%',
+          maxHeight: '80%',
+          backdrop: true
+        },
+        renderer: 'modal-renderer'
+      });
+      
+      // Form Component
+      this.uiComponents.set('form', {
+        id: 'form',
+        name: 'Form',
+        description: 'Input form',
+        type: 'input',
+        config: {
+          layout: 'vertical',
+          labelPosition: 'top',
+          showValidation: true,
+          showRequired: true,
+          showHelp: true,
+          submitButton: true,
+          cancelButton: true,
+          resetButton: false,
+          autoSave: false
+        },
+        renderer: 'form-renderer'
+      });
+      
+      // Table Component
+      this.uiComponents.set('table', {
+        id: 'table',
+        name: 'Table',
+        description: 'Data table',
+        type: 'data',
+        config: {
+          paginated: true,
+          pageSize: 10,
+          sortable: true,
+          filterable: true,
+          selectable: true,
+          exportable: true,
+          resizableColumns: true,
+          reorderableColumns: true,
+          stickyHeader: true,
+          virtualScroll: true
+        },
+        renderer: 'table-renderer'
+      });
+      
+      // Chart Component
+      this.uiComponents.set('chart', {
+        id: 'chart',
+        name: 'Chart',
+        description: 'Data visualization chart',
+        type: 'visualization',
+        config: {
+          responsive: true,
+          aspectRatio: 2,
+          showLegend: true,
+          showTooltips: true,
+          showGrid: true,
+          showAxes: true,
+          animations: true,
+          exportable: true,
+          zoomable: true
+        },
+        renderer: 'chart-renderer'
+      });
+      
+      // Notification Component
+      this.uiComponents.set('notification', {
+        id: 'notification',
+        name: 'Notification',
+        description: 'System notification',
+        type: 'feedback',
+        config: {
+          position: 'top-right',
+          duration: 5000,
+          dismissible: true,
+          showIcon: true,
+          showTitle: true,
+          showMessage: true,
+          showProgress: true,
+          maxVisible: 5,
+          animation: true
+        },
+        renderer: 'notification-renderer'
+      });
+      
+      // Toolbar Component
+      this.uiComponents.set('toolbar', {
+        id: 'toolbar',
+        name: 'Toolbar',
+        description: 'Action toolbar',
+        type: 'controls',
+        config: {
+          orientation: 'horizontal',
+          showIcons: true,
+          showLabels: true,
+          showTooltips: true,
+          groupItems: true,
+          overflow: 'dropdown',
+          size: 'medium'
+        },
+        renderer: 'toolbar-renderer'
+      });
+      
+      // Menu Component
+      this.uiComponents.set('menu', {
+        id: 'menu',
+        name: 'Menu',
+        description: 'Navigation menu',
+        type: 'navigation',
+        config: {
+          orientation: 'vertical',
+          showIcons: true,
+          showLabels: true,
+          showTooltips: true,
+          expandable: true,
+          accordion: true,
+          highlightActive: true,
+          border: true
+        },
+        renderer: 'menu-renderer'
+      });
+      
+      // Button Component
+      this.uiComponents.set('button', {
+        id: 'button',
+        name: 'Button',
+        description: 'Action button',
+        type: 'control',
+        config: {
+          variant: 'contained',
+          size: 'medium',
+          showIcon: true,
+          showLabel: true,
+          showTooltip: true,
+          confirmDangerous: true,
+          loading: false,
+          disabled: false
+        },
+        renderer: 'button-renderer'
+      });
+      
+      // Search Component
+      this.uiComponents.set('search', {
+        id: 'search',
+        name: 'Search',
+        description: 'Search input',
+        type: 'input',
+        config: {
+          placeholder: 'Search...',
+          showIcon: true,
+          showClear: true,
+          autoFocus: false,
+          debounce: 300,
+          suggestions: true,
+          history: true,
+          filters: true,
+          keyboard: true
+        },
+        renderer: 'search-renderer'
+      });
+      
+      // User Menu Component
+      this.uiComponents.set('user-menu', {
+        id: 'user-menu',
+        name: 'User Menu',
+        description: 'User profile and settings menu',
+        type: 'navigation',
+        config: {
+          showAvatar: true,
+          showName: true,
+          showRole: true,
+          showStatus: true,
+          menuItems: [
+            'profile',
+            'preferences',
+            'notifications',
+            'help',
+            'logout'
+          ]
+        },
+        renderer: 'user-menu-renderer'
+      });
+      
+      // Terminal Component
+      this.uiComponents.set('terminal', {
+        id: 'terminal',
+        name: 'Terminal',
+        description: 'Command line terminal',
+        type: 'input',
+        config: {
+          prompt: '> ',
+          showPrompt: true,
+          history: true,
+          historySize: 100,
+          autoComplete: true,
+          syntaxHighlighting: true,
+          fontFamily: 'monospace',
+          fontSize: 14,
+          theme: 'dark'
+        },
+        renderer: 'terminal-renderer'
+      });
+      
+      console.log(`Registered ${this.uiComponents.size} UI components`);
+    }
+    
+    /**
+     * Register default layout templates
+     */
+    async registerDefaultLayoutTemplates() {
+      console.log("Registering default layout templates...");
+      
+      // Standard Layout
+      this.layoutTemplates.set('standard', {
+        id: 'standard',
+        name: 'Standard Layout',
+        description: 'Standard application layout with header, sidebar, and content',
+        type: 'web',
+        isDefault: true,
+        components: [
+          {
+            id: 'header',
+            component: 'header',
+            position: 'top',
+            config: {
+              showLogo: true,
+              showTitle: true,
+              showNavigation: true,
+              showSearch: true,
+              showUserMenu: true,
+              showNotifications: true
+            }
+          },
+          {
+            id: 'sidebar',
+            component: 'sidebar',
+            position: 'left',
+            config: {
+              collapsible: true,
+              defaultCollapsed: false,
+              showIcons: true,
+              showLabels: true
+            }
+          },
+          {
+            id: 'content',
+            component: 'content-container',
+            position: 'main',
+            config: {
+              padding: 16,
+              overflow: 'auto'
+            }
+          },
+          {
+            id: 'footer',
+            component: 'footer',
+            position: 'bottom',
+            config: {
+              showCopyright: true,
+              showVersion: true,
+              showLinks: true
+            }
+          }
+        ]
+      });
+      
+      // Dashboard Layout
+      this.layoutTemplates.set('dashboard', {
+        id: 'dashboard',
+        name: 'Dashboard Layout',
+        description: 'Layout optimized for dashboards with minimal chrome',
+        type: 'web',
+        isDefault: false,
+        components: [
+          {
+            id: 'header',
+            component: 'header',
+            position: 'top',
+            config: {
+              showLogo: true,
+              showTitle: true,
+              showNavigation: false,
+              showSearch: true,
+              showUserMenu: true,
+              showNotifications: true
+            }
+          },
+          {
+            id: 'dashboard-toolbar',
+            component: 'toolbar',
+            position: 'top-content',
+            config: {
+              orientation: 'horizontal',
+              showIcons: true,
+              showLabels: true
+            }
+          },
+          {
+            id: 'dashboard-grid',
+            component: 'dashboard-grid',
+            position: 'main',
+            config: {
+              columns: 24,
+              rowHeight: 50,
+              margin: 10,
+              draggable: true,
+              resizable: true
+            }
+          },
+          {
+            id: 'footer',
+            component: 'footer',
+            position: 'bottom',
+            config: {
+              showCopyright: true,
+              showVersion: true,
+              showLinks: false
+            }
+          }
+        ]
+      });
+      
+      // Terminal Layout
+      this.layoutTemplates.set('terminal', {
+        id: 'terminal',
+        name: 'Terminal Layout',
+        description: 'Layout optimized for command line interface',
+        type: 'cli',
+        isDefault: true,
+        components: [
+          {
+            id: 'header-bar',
+            component: 'cli-header',
+            position: 'top',
+            config: {
+              showTitle: true,
+              showVersion: true,
+              showStatus: true
+            }
+          },
+          {
+            id: 'terminal',
+            component: 'terminal',
+            position: 'main',
+            config: {
+              prompt: '> ',
+              showPrompt: true,
+              history: true,
+              autoComplete: true,
+              syntaxHighlighting: true
+            }
+          },
+          {
+            id: 'status-bar',
+            component: 'cli-status-bar',
+            position: 'bottom',
+            config: {
+              showStatus: true,
+              showMode: true,
+              showPosition: true
+            }
+          }
+        ]
+      });
+      
+      // Mobile Layout
+      this.layoutTemplates.set('mobile', {
+        id: 'mobile',
+        name: 'Mobile Layout',
+        description: 'Layout optimized for mobile devices',
+        type: 'mobile',
+        isDefault: true,
+        components: [
+          {
+            id: 'mobile-header',
+            component: 'header',
+            position: 'top',
+            config: {
+              showLogo: true,
+              showTitle: true,
+              showNavigation: false,
+              showSearch: false,
+              showUserMenu: true,
+              showNotifications: true,
+              showMenuButton: true
+            }
+          },
+          {
+            id: 'mobile-content',
+            component: 'content-container',
+            position: 'main',
+            config: {
+              padding: 8,
+              overflow: 'auto'
+            }
+          },
+          {
+            id: 'mobile-navigation',
+            component: 'bottom-navigation',
+            position: 'bottom',
+            config: {
+              showIcons: true,
+              showLabels: true,
+              items: 5
+            }
+          },
+          {
+            id: 'mobile-drawer',
+            component: 'drawer',
+            position: 'left',
+            config: {
+              temporary: true,
+              showHeader: true,
+              showFooter: true,
+              width: '80%'
+            }
+          }
+        ]
+      });
+      
+      // Immersive Layout
+      this.layoutTemplates.set('immersive', {
+        id: 'immersive',
+        name: 'Immersive Layout',
+        description: 'Layout for immersive 3D interfaces',
+        type: 'immersive',
+        isDefault: true,
+        components: [
+          {
+            id: 'environment',
+            component: 'immersive-environment',
+            position: 'background',
+            config: {
+              scene: 'data-center',
+              lighting: 'ambient',
+              physics: true,
+              audio: true
+            }
+          },
+          {
+            id: 'user-avatar',
+            component: 'avatar',
+            position: 'user',
+            config: {
+              visible: true,
+              showHands: true,
+              showBody: false,
+              interactionRadius: 5
+            }
+          },
+          {
+            id: 'control-panel',
+            component: 'immersive-panel',
+            position: 'wrist',
+            config: {
+              showMenu: true,
+              showStatus: true,
+              followUser: true,
+              size: 'medium'
+            }
+          },
+          {
+            id: 'data-visualization',
+            component: '3d-visualization',
+            position: 'center',
+            config: {
+              interactive: true,
+              rotatable: true,
+              zoomable: true,
+              dataSource: 'system'
+            }
+          }
+        ]
+      });
+      
+      // API Documentation Layout
+      this.layoutTemplates.set('api-docs', {
+        id: 'api-docs',
+        name: 'API Documentation Layout',
+        description: 'Layout for API documentation',
+        type: 'web',
+        isDefault: false,
+        components: [
+          {
+            id: 'header',
+            component: 'header',
+            position: 'top',
+            config: {
+              showLogo: true,
+              showTitle: true,
+              showNavigation: false,
+              showSearch: true,
+              showUserMenu: true,
+              showNotifications: false
+            }
+          },
+          {
+            id: 'docs-sidebar',
+            component: 'sidebar',
+            position: 'left',
+            config: {
+              collapsible: true,
+              defaultCollapsed: false,
+              showIcons: true,
+              showLabels: true,
+              width: 280
+            }
+          },
+          {
+            id: 'docs-content',
+            component: 'content-container',
+            position: 'main',
+            config: {
+              padding: 24,
+              overflow: 'auto'
+            }
+          },
+          {
+            id: 'docs-toc',
+            component: 'table-of-contents',
+            position: 'right',
+            config: {
+              sticky: true,
+              maxHeight: 'calc(100vh - 64px)',
+              width: 240,
+              highlightActive: true
+            }
+          },
+          {
+            id: 'footer',
+            component: 'footer',
+            position: 'bottom',
+            config: {
+              showCopyright: true,
+              showVersion: true,
+              showLinks: true
+            }
+          }
+        ]
+      });
+      
+      console.log(`Registered ${this.layoutTemplates.size} layout templates`);
+    }
+    
+    /**
+     * Start real-time updates
+     */
+    async startRealTimeUpdates() {
+      console.log("Starting real-time update service...");
+      
+      const refreshInterval = this.config.refreshInterval;
+      
+      console.log(`Scheduling UI updates every ${refreshInterval / 1000} seconds`);
+      
+      // Schedule regular UI updates
+      setInterval(() => {
+        this.refreshActiveViews().catch(error => {
+          console.error("Error during UI refresh:", error);
+        });
+      }, refreshInterval);
+      
+      return true;
+    }
+    
+    /**
+     * Refresh active views
+     */
+    async refreshActiveViews() {
+      if (!this.initialized) {
+        return false;
+      }
+      
+      // Update state
+      this.state.lastUpdate = Date.now();
+      
+      // Get active connections
+      const activeConnections = Array.from(this.activeConnections.values());
+      
+      if (activeConnections.length === 0) {
+        return true;
+      }
+      
+      // Group connections by view
+      const connectionsByView = {};
+      
+      for (const connection of activeConnections) {
+        if (!connection.currentView) {
+          continue;
+        }
+        
+        if (!connectionsByView[connection.currentView]) {
+          connectionsByView[connection.currentView] = [];
+        }
+        
+        connectionsByView[connection.currentView].push(connection);
+      }
+      
+      // Update each view
+      for (const [viewId, connections] of Object.entries(connectionsByView)) {
+        try {
+          // Get view data
+          const viewData = await this.getViewData(viewId);
+          
+          // Send updates to each connection
+          for (const connection of connections) {
+            this.sendUpdate(connection, viewId, viewData);
+          }
+          
+          // Update active views count
+          if (!this.state.activeViews[viewId]) {
+            this.state.activeViews[viewId] = 0;
+          }
+          this.state.activeViews[viewId] = connections.length;
+        } catch (error) {
+          console.error(`Error updating view ${viewId}:`, error);
+        }
+      }
+      
+      return true;
+    }
+    
+    /**
+     * Get view data
+     */
+    async getViewData(viewId) {
+      // In a real implementation, this would fetch actual data for the view
+      // For this example, we'll return simulated data
+      
+      // Check if view is a dashboard
+      if (this.dashboards.has(viewId)) {
+        return this.getDashboardData(viewId);
+      }
+      
+      // Default view data
+      return {
+        timestamp: Date.now(),
+        viewId,
+        data: {
+          status: 'active',
+          metrics: {
+            cpu: Math.random() * 100,
+            memory: Math.random() * 100,
+            network: Math.random() * 100,
+            storage: Math.random() * 100
+          }
+        }
+      };
+    }
+    
+    /**
+     * Get dashboard data
+     */
+    async getDashboardData(dashboardId) {
+      const dashboard = this.dashboards.get(dashboardId);
+      
+      if (!dashboard) {
+        throw new Error(`Dashboard not found: ${dashboardId}`);
+      }
+      
+      // Collect data for each panel
+      const panelData = {};
+      
+      for (const panel of dashboard.panels) {
+        try {
+          panelData[panel.id] = await this.getPanelData(panel);
+        } catch (error) {
+          console.error(`Error getting data for panel ${panel.id}:`, error);
+          panelData[panel.id] = { error: error.message };
+        }
+      }
+      
+      return {
+        timestamp: Date.now(),
+        dashboardId,
+        panels: panelData
+      };
+    }
+    
+    /**
+     * Get panel data
+     */
+    async getPanelData(panel) {
+      // In a real implementation, this would fetch actual data for the panel
+      // For this example, we'll return simulated data based on the panel type
+      
+      switch (panel.type) {
+        case 'status':
+          return {
+            status: ['healthy', 'warning', 'critical', 'maintenance'][Math.floor(Math.random() * 4)],
+            message: 'System is operating normally',
+            timestamp: Date.now(),
+            details: {
+              uptime: Math.floor(Math.random() * 30) + ' days',
+              activeNodes: Math.floor(Math.random() * 50) + 10,
+              activeUsers: Math.floor(Math.random() * 100) + 20
+            }
+          };
+          
+        case 'chart':
+          return {
+            timestamps: Array.from({ length: 20 }, (_, i) => Date.now() - (19 - i) * 60000),
+            metrics: panel.metrics.reduce((acc, metric) => {
+              acc[metric] = Array.from({ length: 20 }, () => Math.random() * 100);
+              return acc;
+            }, {})
+          };
+          
+        case 'table':
+          return {
+            columns: panel.columns,
+            rows: Array.from({ length: 10 }, (_, i) => {
+              const row = {};
+              for (const column of panel.columns) {
+                if (column === 'id') {
+                  row[column] = `item-${i + 1}`;
+                } else if (column === 'status') {
+                  row[column] = ['active', 'inactive', 'error', 'warning'][Math.floor(Math.random() * 4)];
+                } else if (column === 'type') {
+                  row[column] = ['node', 'service', 'deployment', 'container'][Math.floor(Math.random() * 4)];
+                } else if (column === 'uptime') {
+                  row[column] = `${Math.floor(Math.random() * 30)}d ${Math.floor(Math.random() * 24)}h`;
+                } else if (column === 'load') {
+                  row[column] = (Math.random() * 10).toFixed(2);
+                } else {
+                  row[column] = `Value ${i + 1}`;
+                }
+              }
+              return row;
+            })
+          };
+          
+        case 'feed':
+          return {
+            events: Array.from({ length: panel.limit || 10 }, (_, i) => ({
+              id: `event-${i + 1}`,
+              type: ['info', 'warning', 'error', 'success'][Math.floor(Math.random() * 4)],
+              message: `Event ${i + 1} description`,
+              source: ['system', 'user', 'network', 'security'][Math.floor(Math.random() * 4)],
+              timestamp: Date.now() - Math.floor(Math.random() * 3600000)
+            }))
+          };
+          
+        case 'gauge':
+          return {
+            value: Math.random() * 100,
+            min: 0,
+            max: 100,
+            thresholds: [
+              { value: 30, color: 'red' },
+              { value: 60, color: 'yellow' },
+              { value: 100, color: 'green' }
+            ]
+          };
+          
+        case 'alerts':
+          return {
+            alerts: Array.from({ length: Math.floor(Math.random() * 5) + 1 }, (_, i) => ({
+              id: `alert-${i + 1}`,
+              severity: ['critical', 'high', 'medium', 'low'][Math.floor(Math.random() * 4)],
+              message: `Alert ${i + 1} description`,
+              source: ['system', 'network', 'security', 'application'][Math.floor(Math.random() * 4)],
+              timestamp: Date.now() - Math.floor(Math.random() * 3600000),
+              acknowledged: Math.random() > 0.5
+            }))
+          };
+          
+        case 'actions':
+          return {
+            actions: panel.actions.map(action => ({
+              id: action,
+              name: action.charAt(0).toUpperCase() + action.slice(1),
+              enabled: Math.random() > 0.2,
+              loading: Math.random() > 0.9
+            }))
+          };
+          
+        default:
+          return {
+            timestamp: Date.now(),
+            type: panel.type,
+            data: 'Simulated panel data'
+          };
+      }
+    }
+    
+    /**
+     * Send update to connection
+     */
+    sendUpdate(connection, viewId, data) {
+      // In a real implementation, this would send the update to the client
+      // For this example, we'll simulate sending the update
+      
+      if (!connection.send || typeof connection.send !== 'function') {
+        console.warn(`Cannot send update to connection ${connection.id}: No send function`);
+        return false;
+      }
+      
+      try {
+        connection.send({
+          type: 'update',
+          viewId,
+          data
+        });
+        
+        return true;
+      } catch (error) {
+        console.error(`Error sending update to connection ${connection.id}:`, error);
+        return false;
+      }
+    }
+    
+    /**
+     * Register connection
+     */
+    registerConnection(connection) {
+      if (!this.initialized) {
+        throw new Error("UI Manager is not initialized");
+      }
+      
+      console.log(`Registering connection: ${connection.id} (${connection.type})`);
+      
+      // Check if connection already exists
+      if (this.activeConnections.has(connection.id)) {
+        console.warn(`Connection already registered: ${connection.id}`);
+        return this.activeConnections.get(connection.id);
+      }
+      
+      // Check if max connections reached
+      if (this.activeConnections.size >= this.config.maxConnections) {
+        throw new Error("Maximum connections reached");
+      }
+      
+      // Store connection
+      this.activeConnections.set(connection.id, connection);
+      
+      // Update state
+      this.state.activeConnections = this.activeConnections.size;
+      
+      // If connection has a user, update active users count
+      if (connection.userId) {
+        this.state.activeUsers++;
+      }
+      
+      return connection;
+    }
+    
+    /**
+     * Unregister connection
+     */
+    unregisterConnection(connectionId) {
+      if (!this.initialized) {
+        return false;
+      }
+      
+      console.log(`Unregistering connection: ${connectionId}`);
+      
+      // Check if connection exists
+      if (!this.activeConnections.has(connectionId)) {
+        console.warn(`Connection not found: ${connectionId}`);
+        return false;
+      }
+      
+      const connection = this.activeConnections.get(connectionId);
+      
+      // Remove connection
+      this.activeConnections.delete(connectionId);
+      
+      // Update state
+      this.state.activeConnections = this.activeConnections.size;
+      
+      // If connection had a user, update active users count
+      if (connection.userId) {
+        this.state.activeUsers = Math.max(0, this.state.activeUsers - 1);
+      }
+      
+      // Remove connection from views
+      if (connection.currentView && this.state.activeViews[connection.currentView]) {
+        this.state.activeViews[connection.currentView] = Math.max(0, this.state.activeViews[connection.currentView] - 1);
+        
+        if (this.state.activeViews[connection.currentView] === 0) {
+          delete this.state.activeViews[connection.currentView];
+        }
+      }
+      
+      return true;
+    }
+    
+    /**
+     * Set connection view
+     */
+    setConnectionView(connectionId, viewId) {
+      if (!this.initialized) {
+        return false;
+      }
+      
+      // Check if connection exists
+      if (!this.activeConnections.has(connectionId)) {
+        console.warn(`Connection not found: ${connectionId}`);
+        return false;
+      }
+      
+      const connection = this.activeConnections.get(connectionId);
+      
+      // Remove connection from previous view
+      if (connection.currentView && this.state.activeViews[connection.currentView]) {
+        this.state.activeViews[connection.currentView] = Math.max(0, this.state.activeViews[connection.currentView] - 1);
+        
+        if (this.state.activeViews[connection.currentView] === 0) {
+          delete this.state.activeViews[connection.currentView];
+        }
+      }
+      
+      // Set new view
+      connection.currentView = viewId;
+      
+      // Add connection to new view
+      if (viewId) {
+        if (!this.state.activeViews[viewId]) {
+          this.state.activeViews[viewId] = 0;
+        }
+        this.state.activeViews[viewId]++;
+        
+        // Send initial view data
+        this.getViewData(viewId)
+          .then(data => this.sendUpdate(connection, viewId, data))
+          .catch(error => console.error(`Error getting initial view data for ${viewId}:`, error));
+      }
+      
+      return true;
+    }
+    
+    /**
+     * Get user preferences
+     */
+    getUserPreferences(userId) {
+      if (!this.initialized) {
+        throw new Error("UI Manager is not initialized");
+      }
+      
+      // Check if user preferences exist
+      if (!this.userPreferences.has(userId)) {
+        // Create default preferences
+        const defaultPreferences = {
+          userId,
+          theme: this.config.defaultTheme,
+          language: this.config.defaultLanguage,
+          dashboards: {
+            default: this.getDefaultDashboardId(),
+            favorites: []
+          },
+          notifications: {
+            enabled: true,
+            desktop: true,
+            sound: true,
+            minSeverity: 'medium'
+          },
+          interface: {
+            density: 'normal',
+            animations: true,
+            autoRefresh: true,
+            refreshInterval: this.config.refreshInterval,
+            timeFormat: '24h',
+            dateFormat: 'yyyy-MM-dd'
+          },
+          accessibility: {
+            highContrast: false,
+            largeText: false,
+            reducedMotion: false,
+            screenReader: false
+          }
+        };
+        
+        this.userPreferences.set(userId, defaultPreferences);
+      }
+      
+      return this.userPreferences.get(userId);
+    }
+    
+    /**
+     * Set user preferences
+     */
+    setUserPreferences(userId, preferences) {
+      if (!this.initialized) {
+        throw new Error("UI Manager is not initialized");
+      }
+      
+      // Get current preferences
+      const currentPreferences = this.getUserPreferences(userId);
+      
+      // Merge with new preferences
+      const updatedPreferences = {
+        ...currentPreferences,
+        ...preferences,
+        // Ensure nested objects are properly merged
+        dashboards: {
+          ...currentPreferences.dashboards,
+          ...(preferences.dashboards || {})
+        },
+        notifications: {
+          ...currentPreferences.notifications,
+          ...(preferences.notifications || {})
+        },
+        interface: {
+          ...currentPreferences.interface,
+          ...(preferences.interface || {})
+        },
+        accessibility: {
+          ...currentPreferences.accessibility,
+          ...(preferences.accessibility || {})
+        }
+      };
+      
+      // Store updated preferences
+      this.userPreferences.set(userId, updatedPreferences);
+      
+      return updatedPreferences;
+    }
+    
+    /**
+     * Get default dashboard ID
+     */
+    getDefaultDashboardId() {
+      // Find default dashboard
+      for (const [id, dashboard] of this.dashboards.entries()) {
+        if (dashboard.isDefault) {
+          return id;
+        }
+      }
+      
+      // If no default dashboard found, return first dashboard
+      if (this.dashboards.size > 0) {
+        return Array.from(this.dashboards.keys())[0];
+      }
+      
+      return null;
+    }
+    
+    /**
+     * Add notification
+     */
+    addNotification(notification) {
+      if (!this.initialized) {
+        throw new Error("UI Manager is not initialized");
+      }
+      
+      // Ensure notification has required fields
+      const fullNotification = {
+        id: `notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: Date.now(),
+        read: false,
+        ...notification
+      };
+      
+      // Add to queue
+      this.notificationQueue.push(fullNotification);
+      
+      // Trim queue if needed
+      if (this.notificationQueue.length > this.config.maxNotifications) {
+        this.notificationQueue = this.notificationQueue.slice(-this.config.maxNotifications);
+      }
+      
+      // Broadcast notification to relevant connections
+      this.broadcastNotification(fullNotification);
+      
+      return fullNotification;
+    }
+    
+    /**
+     * Broadcast notification
+     */
+    broadcastNotification(notification) {
+      // Determine target connections
+      let targetConnections = [];
+      
+      if (notification.userId) {
+        // User-specific notification
+        targetConnections = Array.from(this.activeConnections.values())
+          .filter(conn => conn.userId === notification.userId);
+      } else if (notification.roles) {
+        // Role-specific notification
+        targetConnections = Array.from(this.activeConnections.values())
+          .filter(conn => conn.roles && notification.roles.some(role => conn.roles.includes(role)));
+      } else {
+        // Broadcast to all connections
+        targetConnections = Array.from(this.activeConnections.values());
+      }
+      
+      // Send notification to each target connection
+      for (const connection of targetConnections) {
+        try {
+          connection.send({
+            type: 'notification',
+            notification
+          });
+        } catch (error) {
+          console.error(`Error sending notification to connection ${connection.id}:`, error);
+        }
+      }
+      
+      return targetConnections.length;
+    }
+    
+    /**
+     * Mark notification as read
+     */
+    markNotificationRead(notificationId, userId) {
+      if (!this.initialized) {
+        return false;
+      }
+      
+      // Find notification
+      const notification = this.notificationQueue.find(n => n.id === notificationId);
+      
+      if (!notification) {
+        return false;
+      }
+      
+      // Check if user-specific notification
+      if (notification.userId && notification.userId !== userId) {
+        return false;
+      }
+      
+      // Mark as read
+      notification.read = true;
+      
+      return true;
+    }
+    
+    /**
+     * Get notifications for user
+     */
+    getUserNotifications(userId, options = {}) {
+      if (!this.initialized) {
+        return [];
+      }
+      
+      const { limit = 50, includeRead = false, minSeverity = null } = options;
+      
+      // Filter notifications
+      let notifications = this.notificationQueue.filter(n => {
+        // Include if notification is for all users or specifically for this user
+        const userMatch = !n.userId || n.userId === userId;
+        
+        // Include if notification is for a role the user has
+        const roleMatch = !n.roles || (options.userRoles && n.roles.some(role => options.userRoles.includes(role)));
+        
+        // Include based on read status
+        const readMatch = includeRead || !n.read;
+        
+        // Include based on severity
+        const severityMatch = !minSeverity || !n.severity || this.isSeverityAtLeast(n.severity, minSeverity);
+        
+        return (userMatch || roleMatch) && readMatch && severityMatch;
+      });
+      
+      // Sort by timestamp (newest first)
+      notifications.sort((a, b) => b.timestamp - a.timestamp);
+      
+      // Apply limit
+      if (limit > 0) {
+        notifications = notifications.slice(0, limit);
+      }
+      
+      return notifications;
+    }
+    
+    /**
+     * Check if severity is at least the specified level
+     */
+    isSeverityAtLeast(severity, minSeverity) {
+      const levels = {
+        'low': 0,
+        'medium': 1,
+        'high': 2,
+        'critical': 3
+      };
+      
+      return levels[severity] >= levels[minSeverity];
+    }
+    
+    /**
+     * Execute command
+     */
+    async executeCommand(command, context = {}) {
+      if (!this.initialized) {
+        throw new Error("UI Manager is not initialized");
+      }
+      
+      console.log(`Executing command: ${command}`);
+      
+      try {
+        // Parse command
+        const { commandName, args } = this.parseCommand(command);
+        
+        // Find command handler
+        const handler = await this.findCommandHandler(commandName);
+        
+        if (!handler) {
+          throw new Error(`Command not found: ${commandName}`);
+        }
+        
+        // Execute command
+        const result = await handler(args, context);
+        
+        return {
+          success: true,
+          command: commandName,
+          result
+        };
+      } catch (error) {
+        console.error(`Error executing command: ${command}`, error);
+        
+        return {
+          success: false,
+          command,
+          error: error.message
+        };
+      }
+    }
+    
+    /**
+     * Parse command
+     */
+    parseCommand(command) {
+      // Simple command parsing
+      const parts = command.trim().split(/\s+/);
+      const commandName = parts[0];
+      const args = parts.slice(1);
+      
+      return { commandName, args };
+    }
+    
+    /**
+     * Find command handler
+     */
+    async findCommandHandler(commandName) {
+      // Search for command in all command sets
+      for (const [setId, commandSet] of this.commandSets.entries()) {
+        const command = commandSet.commands.find(cmd => cmd.name === commandName);
+        
+        if (command) {
+          // In a real implementation, this would load the actual handler
+          // For this example, we'll return a simulated handler
+          return this.getSimulatedCommandHandler(command);
+        }
+      }
+      
+      return null;
+    }
+    
+    /**
+     * Get simulated command handler
+     */
+    getSimulatedCommandHandler(command) {
+      return async (args, context) => {
+        // Simulate command execution
+        return {
+          command: command.name,
+          args,
+          context,
+          output: `Simulated output for command: ${command.name}`,
+          timestamp: Date.now()
+        };
+      };
+    }
+    
+    /**
+     * Get UI manager status
+     */
+    getStatus() {
+      return {
+        initialized: this.initialized,
+        status: this.state.status,
+        activeUsers: this.state.activeUsers,
+        activeConnections: this.state.activeConnections,
+        activeViews: this.state.activeViews,
+        lastUpdate: this.state.lastUpdate,
+        interfaces: Array.from(this.interfaces.values()).filter(i => i.enabled).map(i => i.id),
+        dashboards: this.dashboards.size,
+        visualizations: this.visualizations.size,
+        commandSets: this.commandSets.size,
+        themes: this.themes.size,
+        errors: this.state.errors
+      };
+    }
+    
+    /**
+     * Get available interfaces
+     */
+    getInterfaces() {
+      return Array.from(this.interfaces.values())
+        .filter(i => i.enabled)
+        .map(({ id, name, description, type, capabilities }) => ({
+          id, name, description, type, capabilities
+        }));
+    }
+    
+    /**
+     * Get available dashboards
+     */
+    getDashboards(userRoles = []) {
+      return Array.from(this.dashboards.values())
+        .filter(d => this.userHasAccess(userRoles, d.access))
+        .map(({ id, name, description, type }) => ({
+          id, name, description, type
+        }));
+    }
+    
+    /**
+     * Check if user has access
+     */
+    userHasAccess(userRoles, access) {
+      // Public access
+      if (access.public) {
+        return true;
+      }
+      
+      // Role-based access
+      if (access.roles && userRoles) {
+        return access.roles.some(role => userRoles.includes(role));
+      }
+      
+      return false;
+    }
+    
+    /**
+     * Get dashboard by ID
+     */
+    getDashboard(dashboardId, userRoles = []) {
+      const dashboard = this.dashboards.get(dashboardId);
+      
+      if (!dashboard) {
+        throw new Error(`Dashboard not found: ${dashboardId}`);
+      }
+      
+      // Check access
+      if (!this.userHasAccess(userRoles, dashboard.access)) {
+        throw new Error(`Access denied to dashboard: ${dashboardId}`);
+      }
+      
+      return dashboard;
+    }
+    
+    /**
+     * Get available themes
+     */
+    getThemes() {
+      return Array.from(this.themes.values())
+        .map(({ id, name, description, type }) => ({
+          id, name, description, type
+        }));
+    }
+    
+    /**
+     * Get theme by ID
+     */
+    getTheme(themeId) {
+      const theme = this.themes.get(themeId);
+      
+      if (!theme) {
+        // Return default theme
+        return this.themes.get(this.config.defaultTheme);
+      }
+      
+      return theme;
+    }
+    
+    /**
+     * Get available layout templates
+     */
+    getLayoutTemplates(type = null) {
+      let templates = Array.from(this.layoutTemplates.values());
+      
+      // Filter by type if specified
+      if (type) {
+        templates = templates.filter(t => t.type === type);
+      }
+      
+      return templates.map(({ id, name, description, type }) => ({
+        id, name, description, type
+      }));
+    }
+    
+    /**
+     * Get layout template by ID
+     */
+    getLayoutTemplate(templateId, type = null) {
+      const template = this.layoutTemplates.get(templateId);
+      
+      if (!template) {
+        // Get default template for type
+        if (type) {
+          const defaultTemplate = Array.from(this.layoutTemplates.values())
+            .find(t => t.type === type && t.isDefault);
+          
+          if (defaultTemplate) {
+            return defaultTemplate;
+          }
+        }
+        
+        throw new Error(`Layout template not found: ${templateId}`);
+      }
+      
+      // Check type if specified
+      if (type && template.type !== type) {
+        throw new Error(`Layout template ${templateId} is not of type ${type}`);
+      }
+      
+      return template;
+    }
+    
+    /**
+     * Shutdown the UI Manager
+     */
+    async shutdown() {
+      if (!this.initialized) {
+        console.warn("UI Manager is not initialized");
+        return true;
+      }
+      
+      console.log("Shutting down UI Manager...");
+      
+      try {
+        // Close all connections
+        for (const [connectionId, connection] of this.activeConnections.entries()) {
+          try {
+            if (connection.close && typeof connection.close === 'function') {
+              await connection.close();
+            }
+            this.activeConnections.delete(connectionId);
+          } catch (error) {
+            console.error(`Error closing connection ${connectionId}:`, error);
+          }
+        }
+        
+        // Shutdown UI components
+        await this.webInterface.shutdown();
+        await this.

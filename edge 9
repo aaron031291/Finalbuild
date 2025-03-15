@@ -1,0 +1,1357 @@
+/**
+ * Universal System Integration
+ * 
+ * This file provides the integration layer for connecting various components
+ * of the EdgeNativeUMaaS system, enabling seamless communication, data flow,
+ * and coordination between subsystems.
+ */
+
+class UniversalSystemIntegration {
+    constructor(config = {}) {
+      this.id = config.id || `integration-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      this.name = config.name || "Universal System Integration";
+      this.description = config.description || "Integration layer for EdgeNativeUMaaS components";
+      
+      // Integration state
+      this.isInitialized = false;
+      this.isActive = false;
+      this.startTime = null;
+      
+      // Component registry
+      this.components = new Map();
+      this.connections = new Map();
+      this.pipelines = new Map();
+      this.adapters = new Map();
+      this.transformers = new Map();
+      
+      // Event system
+      this.eventBus = new EventBus();
+      this.subscriptions = new Map();
+      
+      // Integration protocols
+      this.protocols = new Map();
+      
+      // Configuration
+      this.config = {
+        autoConnect: config.autoConnect !== false,
+        validateConnections: config.validateConnections !== false,
+        retryFailedConnections: config.retryFailedConnections !== false,
+        maxRetries: config.maxRetries || 5,
+        retryDelay: config.retryDelay || 5000,
+        enableMetrics: config.enableMetrics !== false,
+        ...config
+      };
+      
+      // Metrics
+      this.metrics = {
+        componentRegistrations: 0,
+        activeConnections: 0,
+        messagesSent: 0,
+        messagesReceived: 0,
+        dataVolume: 0,
+        errors: 0,
+        lastActivity: null
+      };
+      
+      // Logging
+      this.logSystem = new LogSystem(config.logLevel || 'info');
+      
+      // Initialize standard protocols
+      this.initializeProtocols();
+    }
+    
+    async initialize(edgeNativeSystem) {
+      this.logSystem.info(`Initializing ${this.name}`);
+      
+      try {
+        // Store reference to the edge native system
+        this.edgeNativeSystem = edgeNativeSystem;
+        
+        // Initialize event bus
+        await this.eventBus.initialize();
+        
+        // Register system-level events
+        this.registerSystemEvents();
+        
+        // Initialize standard adapters
+        await this.initializeAdapters();
+        
+        // Initialize standard transformers
+        await this.initializeTransformers();
+        
+        this.isInitialized = true;
+        this.logSystem.info(`${this.name} initialized successfully`);
+        
+        return true;
+      } catch (error) {
+        this.logSystem.error(`Integration initialization failed: ${error.message}`);
+        throw error;
+      }
+    }
+    
+    async activate() {
+      if (!this.isInitialized) {
+        throw new Error("Cannot activate integration layer: not initialized");
+      }
+      
+      if (this.isActive) {
+        this.logSystem.warn("Integration layer is already active");
+        return true;
+      }
+      
+      this.logSystem.info("Activating integration layer");
+      
+      try {
+        // Activate event bus
+        await this.eventBus.activate();
+        
+        // Activate all connections if auto-connect is enabled
+        if (this.config.autoConnect) {
+          await this.activateAllConnections();
+        }
+        
+        this.isActive = true;
+        this.startTime = Date.now();
+        
+        this.logSystem.info("Integration layer activated successfully");
+        
+        // Emit activation event
+        this.eventBus.emit('integration:activated', {
+          id: this.id,
+          timestamp: this.startTime
+        });
+        
+        return true;
+      } catch (error) {
+        this.logSystem.error(`Integration activation failed: ${error.message}`);
+        throw error;
+      }
+    }
+    
+    async deactivate() {
+      if (!this.isActive) {
+        this.logSystem.warn("Integration layer is not active");
+        return true;
+      }
+      
+      this.logSystem.info("Deactivating integration layer");
+      
+      try {
+        // Deactivate all connections
+        await this.deactivateAllConnections();
+        
+        // Deactivate event bus
+        await this.eventBus.deactivate();
+        
+        this.isActive = false;
+        
+        this.logSystem.info("Integration layer deactivated successfully");
+        
+        // Emit deactivation event
+        this.eventBus.emit('integration:deactivated', {
+          id: this.id,
+          timestamp: Date.now(),
+          uptime: Date.now() - this.startTime
+        });
+        
+        return true;
+      } catch (error) {
+        this.logSystem.error(`Integration deactivation failed: ${error.message}`);
+        throw error;
+      }
+    }
+    
+    initializeProtocols() {
+      // Register standard integration protocols
+      this.registerProtocol('direct', {
+        name: 'Direct Connection',
+        description: 'Direct in-memory connection between components',
+        validateConnection: (source, target) => {
+          return source && target && source.id !== target.id;
+        },
+        createConnection: (source, target, options) => {
+          return {
+            type: 'direct',
+            source: source.id,
+            target: target.id,
+            options
+          };
+        },
+        sendMessage: async (connection, message) => {
+          const targetComponent = this.components.get(connection.target);
+          
+          if (!targetComponent) {
+            throw new Error(`Target component not found: ${connection.target}`);
+          }
+          
+          if (!targetComponent.receiveMessage) {
+            throw new Error(`Target component does not implement receiveMessage: ${connection.target}`);
+          }
+          
+          return targetComponent.receiveMessage(message, connection);
+        }
+      });
+      
+      this.registerProtocol('event', {
+        name: 'Event-Based Connection',
+        description: 'Connection using the event bus for communication',
+        validateConnection: (source, target) => {
+          return source && target && source.id !== target.id;
+        },
+        createConnection: (source, target, options) => {
+          const eventName = options.eventName || `${source.id}:to:${target.id}`;
+          
+          return {
+            type: 'event',
+            source: source.id,
+            target: target.id,
+            eventName,
+            options
+          };
+        },
+        sendMessage: async (connection, message) => {
+          return this.eventBus.emit(connection.eventName, {
+            source: connection.source,
+            target: connection.target,
+            timestamp: Date.now(),
+            message
+          });
+        },
+        activateConnection: async (connection) => {
+          const targetComponent = this.components.get(connection.target);
+          
+          if (!targetComponent) {
+            throw new Error(`Target component not found: ${connection.target}`);
+          }
+          
+          if (!targetComponent.receiveMessage) {
+            throw new Error(`Target component does not implement receiveMessage: ${connection.target}`);
+          }
+          
+          // Subscribe to event
+          const subscription = this.eventBus.subscribe(connection.eventName, async (event) => {
+            await targetComponent.receiveMessage(event.message, connection);
+          });
+          
+          // Store subscription
+          this.subscriptions.set(connection.id, subscription);
+          
+          return true;
+        },
+        deactivateConnection: async (connection) => {
+          // Unsubscribe from event
+          const subscription = this.subscriptions.get(connection.id);
+          
+          if (subscription) {
+            this.eventBus.unsubscribe(connection.eventName, subscription);
+            this.subscriptions.delete(connection.id);
+          }
+          
+          return true;
+        }
+      });
+      
+      this.registerProtocol('pipeline', {
+        name: 'Data Pipeline',
+        description: 'Multi-stage data processing pipeline',
+        validateConnection: (source, target) => {
+          return source && target && source.id !== target.id;
+        },
+        createConnection: (source, target, options) => {
+          const pipelineId = options.pipelineId || `pipeline-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+          
+          // Create pipeline if it doesn't exist
+          if (!this.pipelines.has(pipelineId)) {
+            this.pipelines.set(pipelineId, {
+              id: pipelineId,
+              name: options.pipelineName || `Pipeline ${pipelineId}`,
+              stages: [],
+              active: false,
+              createdAt: Date.now()
+            });
+          }
+          
+          const pipeline = this.pipelines.get(pipelineId);
+          
+          // Add stage to pipeline
+          const stageId = options.stageId || pipeline.stages.length;
+          
+          pipeline.stages.push({
+            id: stageId,
+            source: source.id,
+            target: target.id,
+            transformer: options.transformer,
+            filter: options.filter,
+            options: options.stageOptions || {}
+          });
+          
+          return {
+            type: 'pipeline',
+            source: source.id,
+            target: target.id,
+            pipelineId,
+            stageId,
+            options
+          };
+        },
+        sendMessage: async (connection, message) => {
+          const pipeline = this.pipelines.get(connection.pipelineId);
+          
+          if (!pipeline) {
+            throw new Error(`Pipeline not found: ${connection.pipelineId}`);
+          }
+          
+          if (!pipeline.active) {
+            throw new Error(`Pipeline is not active: ${connection.pipelineId}`);
+          }
+          
+          // Find current stage
+          const currentStageIndex = pipeline.stages.findIndex(stage => 
+            stage.id === connection.stageId && 
+            stage.source === connection.source && 
+            stage.target === connection.target
+          );
+          
+          if (currentStageIndex === -1) {
+            throw new Error(`Stage not found in pipeline: ${connection.stageId}`);
+          }
+          
+          const currentStage = pipeline.stages[currentStageIndex];
+          
+          // Apply transformer if specified
+          let transformedMessage = message;
+          
+          if (currentStage.transformer) {
+            const transformer = typeof currentStage.transformer === 'string' ? 
+              this.transformers.get(currentStage.transformer) : 
+              currentStage.transformer;
+            
+            if (transformer) {
+              transformedMessage = await transformer.transform(message, currentStage.options);
+            }
+          }
+          
+          // Apply filter if specified
+          if (currentStage.filter) {
+            const filter = typeof currentStage.filter === 'function' ? 
+              currentStage.filter : 
+              (msg) => true;
+            
+            if (!filter(transformedMessage)) {
+              // Message filtered out
+              return null;
+            }
+          }
+          
+          // Send to target
+          const targetComponent = this.components.get(currentStage.target);
+          
+          if (!targetComponent) {
+            throw new Error(`Target component not found: ${currentStage.target}`);
+          }
+          
+          if (!targetComponent.receiveMessage) {
+            throw new Error(`Target component does not implement receiveMessage: ${currentStage.target}`);
+          }
+          
+          // Send message to target
+          const result = await targetComponent.receiveMessage(transformedMessage, connection);
+          
+          // If there's a next stage, send to it
+          if (currentStageIndex < pipeline.stages.length - 1) {
+            const nextStage = pipeline.stages[currentStageIndex + 1];
+            
+            const nextConnection = Array.from(this.connections.values()).find(conn => 
+              conn.type === 'pipeline' && 
+              conn.pipelineId === connection.pipelineId && 
+              conn.stageId === nextStage.id
+            );
+            
+            if (nextConnection) {
+              // Send to next stage
+              const sourceComponent = this.components.get(nextStage.source);
+              
+              if (sourceComponent && sourceComponent.sendMessage) {
+                return sourceComponent.sendMessage(result || transformedMessage, nextConnection);
+              }
+            }
+          }
+          
+          return result;
+        },
+        activateConnection: async (connection) => {
+          const pipeline = this.pipelines.get(connection.pipelineId);
+          
+          if (!pipeline) {
+            throw new Error(`Pipeline not found: ${connection.pipelineId}`);
+          }
+          
+          pipeline.active = true;
+          
+          return true;
+        },
+        deactivateConnection: async (connection) => {
+          const pipeline = this.pipelines.get(connection.pipelineId);
+          
+          if (!pipeline) {
+            throw new Error(`Pipeline not found: ${connection.pipelineId}`);
+          }
+          
+          pipeline.active = false;
+          
+          return true;
+        }
+      });
+    }
+    
+    async initializeAdapters() {
+      // Register standard adapters
+      this.registerAdapter('json', {
+        name: 'JSON Adapter',
+        description: 'Converts between JSON and objects',
+        serialize: (data) => JSON.stringify(data),
+        deserialize: (data) => JSON.parse(data)
+      });
+      
+      this.registerAdapter('binary', {
+        name: 'Binary Adapter',
+        description: 'Converts between binary and objects',
+        serialize: (data) => Buffer.from(JSON.stringify(data)),
+        deserialize: (data) => JSON.parse(data.toString())
+      });
+      
+      this.registerAdapter('text', {
+        name: 'Text Adapter',
+        description: 'Converts between text and objects',
+        serialize: (data) => typeof data === 'string' ? data : JSON.stringify(data),
+        deserialize: (data) => {
+          try {
+            return JSON.parse(data);
+          } catch (e) {
+            return data;
+          }
+        }
+      });
+      
+      return true;
+    }
+    
+    async initializeTransformers() {
+      // Register standard transformers
+      this.registerTransformer('passthrough', {
+        name: 'Passthrough Transformer',
+        description: 'Passes data through without transformation',
+        transform: (data) => data
+      });
+      
+      this.registerTransformer('filter', {
+        name: 'Filter Transformer',
+        description: 'Filters data based on criteria',
+        transform: (data, options) => {
+          if (!options.filter) {
+            return data;
+          }
+          
+          if (typeof options.filter === 'function') {
+            return options.filter(data) ? data : null;
+          }
+          
+          return data;
+        }
+      });
+      
+      this.registerTransformer('map', {
+        name: 'Map Transformer',
+        description: 'Maps data using a mapping function',
+        transform: (data, options) => {
+          if (!options.map) {
+            return data;
+          }
+          
+          if (typeof options.map === 'function') {
+            return options.map(data);
+          }
+          
+          return data;
+        }
+      });
+      
+      this.registerTransformer('enrich', {
+        name: 'Enrichment Transformer',
+        description: 'Enriches data with additional information',
+        transform: (data, options) => {
+          if (!options.enrich) {
+            return data;
+          }
+          
+          if (typeof options.enrich === 'function') {
+            return options.enrich(data);
+          }
+          
+          if (typeof options.enrich === 'object') {
+            return {
+              ...data,
+              ...options.enrich
+            };
+          }
+          
+          return data;
+        }
+      });
+      
+      return true;
+    }
+    
+    registerSystemEvents() {
+      // Register system-level events
+      this.eventBus.registerEvent('integration:component:registered', 'Component registered with integration layer');
+      this.eventBus.registerEvent('integration:component:unregistered', 'Component unregistered from integration layer');
+      this.eventBus.registerEvent('integration:connection:created', 'Connection created between components');
+      this.eventBus.registerEvent('integration:connection:activated', 'Connection activated');
+      this.eventBus.registerEvent('integration:connection:deactivated', 'Connection deactivated');
+      this.eventBus.registerEvent('integration:connection:removed', 'Connection removed');
+      this.eventBus.registerEvent('integration:message:sent', 'Message sent through connection');
+      this.eventBus.registerEvent('integration:message:received', 'Message received through connection');
+      this.eventBus.registerEvent('integration:error', 'Error in integration layer');
+      this.eventBus.registerEvent('integration:activated', 'Integration layer activated');
+      this.eventBus.registerEvent('integration:deactivated', 'Integration layer deactivated');
+      
+      return true;
+    }
+    
+    registerProtocol(protocolId, protocol) {
+      if (!protocolId || !protocol) {
+        throw new Error("Protocol ID and protocol object are required");
+      }
+      
+      if (this.protocols.has(protocolId)) {
+        throw new Error(`Protocol already registered: ${protocolId}`);
+      }
+      
+      this.protocols.set(protocolId, protocol);
+      this.logSystem.debug(`Registered protocol: ${protocol.name}`);
+      
+      return protocol;
+    }
+    
+    getProtocol(protocolId) {
+      const protocol = this.protocols.get(protocolId);
+      
+      if (!protocol) {
+        throw new Error(`Protocol not found: ${protocolId}`);
+      }
+      
+      return protocol;
+    }
+    
+    registerAdapter(adapterId, adapter) {
+      if (!adapterId || !adapter) {
+        throw new Error("Adapter ID and adapter object are required");
+      }
+      
+      if (this.adapters.has(adapterId)) {
+        throw new Error(`Adapter already registered: ${adapterId}`);
+      }
+      
+      this.adapters.set(adapterId, adapter);
+      this.logSystem.debug(`Registered adapter: ${adapter.name}`);
+      
+      return adapter;
+    }
+    
+    getAdapter(adapterId) {
+      const adapter = this.adapters.get(adapterId);
+      
+      if (!adapter) {
+        throw new Error(`Adapter not found: ${adapterId}`);
+      }
+      
+      return adapter;
+    }
+    
+    registerTransformer(transformerId, transformer) {
+      if (!transformerId || !transformer) {
+        throw new Error("Transformer ID and transformer object are required");
+      }
+      
+      if (this.transformers.has(transformerId)) {
+        throw new Error(`Transformer already registered: ${transformerId}`);
+      }
+      
+      this.transformers.set(transformerId, transformer);
+      this.logSystem.debug(`Registered transformer: ${transformer.name}`);
+      
+      return transformer;
+    }
+    
+    getTransformer(transformerId) {
+      const transformer = this.transformers.get(transformerId);
+      
+      if (!transformer) {
+        throw new Error(`Transformer not found: ${transformerId}`);
+      }
+      
+      return transformer;
+    }
+    
+    registerComponent(component) {
+      if (!component || !component.id) {
+        throw new Error("Component must have an ID");
+      }
+      
+      if (this.components.has(component.id)) {
+        throw new Error(`Component already registered: ${component.id}`);
+      }
+      
+      this.components.set(component.id, component);
+      this.metrics.componentRegistrations++;
+      
+      this.logSystem.info(`Registered component: ${component.id}`);
+      
+      // Emit event
+      this.eventBus.emit('integration:component:registered', {
+        componentId: component.id,
+        timestamp: Date.now()
+      });
+      
+      return true;
+    }
+    
+    unregisterComponent(componentId) {
+      if (!this.components.has(componentId)) {
+        this.logSystem.warn(`Component not registered: ${componentId}`);
+        return false;
+      }
+      
+      // Remove all connections involving this component
+      const connectionsToRemove = [];
+      
+      for (const [connectionId, connection] of this.connections.entries()) {
+        if (connection.source === componentId || connection.target === componentId) {
+          connectionsToRemove.push(connectionId);
+        }
+      }
+      
+      for (const connectionId of connectionsToRemove) {
+        this.removeConnection(connectionId);
+      }
+      
+      // Remove component
+      this.components.delete(componentId);
+      
+      this.logSystem.info(`Unregistered component: ${componentId}`);
+      
+      // Emit event
+      this.eventBus.emit('integration:component:unregistered', {
+        componentId,
+        timestamp: Date.now()
+      });
+      
+      return true;
+    }
+    
+    getComponent(componentId) {
+      return this.components.get(componentId);
+    }
+    
+    getComponents() {
+      return this.components;
+    }
+    
+    createConnection(sourceId, targetId, options = {}) {
+      // Get components
+      const sourceComponent = this.getComponent(sourceId);
+      const targetComponent = this.getComponent(targetId);
+      
+      if (!sourceComponent) {
+        throw new Error(`Source component not found: ${sourceId}`);
+      }
+      
+      if (!targetComponent) {
+        throw new Error(`Target component not found: ${targetId}`);
+      }
+      
+      // Get protocol
+      const protocolId = options.protocol || 'direct';
+      const protocol = this.getProtocol(protocolId);
+      
+      // Validate connection
+      if (this.config.validateConnections && protocol.validateConnection) {
+        const isValid = protocol.validateConnection(sourceComponent, targetComponent, options);
+        
+        if (!isValid) {
+          throw new Error(`Invalid connection between ${sourceId} and ${targetId}`);
+        }
+      }
+      
+      // Create connection
+      const connectionBase = protocol.createConnection(sourceComponent, targetComponent, options);
+      
+      const connectionId = options.id || `connection-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      
+      const connection = {
+        id: connectionId,
+        createdAt: Date.now(),
+        active: false,
+        ...connectionBase
+      };
+      
+      // Store connection
+      this.connections.set(connectionId, connection);
+      
+      this.logSystem.info(`Created connection: ${connectionId} (${sourceId} -> ${targetId})`);
+      
+      // Emit event
+      this.eventBus.emit('integration:connection:created', {
+        connectionId,
+        sourceId,
+        targetId,
+        protocol: protocolId,
+        timestamp: Date.now()
+      });
+      
+      return connection;
+    }
+    
+    async activateConnection(connectionId) {
+      const connection = this.connections.get(connectionId);
+      
+      if (!connection) {
+        throw new Error(`Connection not found: ${connectionId}`);
+      }
+      
+      if (connection.active) {
+        this.logSystem.warn(`Connection already active: ${connectionId}`);
+        return true;
+      }
+      
+      // Get protocol
+      const protocol = this.getProtocol(connection.type);
+      
+      try {
+        // Activate connection
+        if (protocol.activateConnection) {
+          await protocol.activateConnection(connection);
+        }
+        
+        // Mark as active
+        connection.active = true;
+        connection.activatedAt = Date.now();
+        
+        this.metrics.activeConnections++;
+        
+        this.logSystem.info(`Activated connection: ${connectionId}`);
+        
+        // Emit event
+        this.eventBus.emit('integration:connection:activated', {
+          connectionId,
+          sourceId: connection.source,
+          targetId: connection.target,
+          timestamp: connection.activatedAt
+        });
+        
+        return true;
+      } catch (error) {
+        this.logSystem.error(`Failed to activate connection ${connectionId}: ${error.message}`);
+        
+        // Retry if configured
+        if (this.config.retryFailedConnections && (!connection.retries || connection.retries < this.config.maxRetries)) {
+          connection.retries = (connection.retries || 0) + 1;
+          
+          this.logSystem.info(`Retrying connection activation (${connection.retries}/${this.config.maxRetries}): ${connectionId}`);
+          
+          setTimeout(() => {
+            this.activateConnection(connectionId).catch(err => {
+              this.logSystem.error(`Retry failed for connection ${connectionId}: ${err.message}`);
+            });
+          }, this.config.retryDelay);
+        }
+        
+        throw error;
+      }
+    }
+    
+    async deactivateConnection(connectionId) {
+      const connection = this.connections.get(connectionId);
+      
+      if (!connection) {
+        throw new Error(`Connection not found: ${connectionId}`);
+      }
+      
+      if (!connection.active) {
+        this.logSystem.warn(`Connection not active: ${connectionId}`);
+        return true;
+      }
+      
+      // Get protocol
+      const protocol = this.getProtocol(connection.type);
+      
+      try {
+        // Deactivate connection
+        if (protocol.deactivateConnection) {
+          await protocol.deactivateConnection(connection);
+        }
+        
+        // Mark as inactive
+        connection.active = false;
+        connection.deactivatedAt = Date.now();
+        
+        this.metrics.activeConnections--;
+        
+        this.logSystem.info(`Deactivated connection: ${connectionId}`);
+        
+        // Emit event
+        this.eventBus.emit('integration:connection:deactivated', {
+          connectionId,
+          sourceId: connection.source,
+          targetId: connection.target,
+          timestamp: connection.deactivatedAt
+        });
+        
+        return true;
+      } catch (error) {
+        this.logSystem.error(`Failed to deactivate connection ${connectionId}: ${error.message}`);
+        throw error;
+      }
+    }
+    
+    async removeConnection(connectionId) {
+      const connection = this.connections.get(connectionId);
+      
+      if (!connection) {
+        this.logSystem.warn(`Connection not found: ${connectionId}`);
+        return false;
+      }
+      
+      // Deactivate if active
+      if (connection.active) {
+        await this.deactivateConnection(connectionId);
+      }
+      
+      // Remove connection
+      this.connections.delete(connectionId);
+      
+      this.logSystem.info(`Removed connection: ${connectionId}`);
+      
+      // Emit event
+      this.eventBus.emit('integration:connection:removed', {
+        connectionId,
+        sourceId: connection.source,
+        targetId: connection.target,
+        timestamp: Date.now()
+      });
+      
+      return true;
+    }
+    
+    getConnection(connectionId) {
+      return this.connections.get(connectionId);
+    }
+    
+    getConnections(filter = {}) {
+      const connections = Array.from(this.connections.values());
+      
+      if (Object.keys(filter).length === 0) {
+        return connections;
+      }
+      
+      return connections.filter(connection => {
+        for (const [key, value] of Object.entries(filter)) {
+          if (connection[key] !== value) {
+            return false;
+          }
+        }
+        
+        return true;
+      });
+    }
+    
+    async activateAllConnections() {
+      this.logSystem.info("Activating all connections");
+      
+      const results = [];
+      
+      for (const connectionId of this.connections.keys()) {
+        try {
+          const result = await this.activateConnection(connectionId);
+          results.push({ connectionId, success: true, result });
+        } catch (error) {
+          results.push({ connectionId, success: false, error: error.message });
+        }
+      }
+      
+      return results;
+    }
+    
+    async deactivateAllConnections() {
+      this.logSystem.info("Deactivating all connections");
+      
+      const results = [];
+      
+      for (const connectionId of this.connections.keys()) {
+        try {
+          const result = await this.deactivateConnection(connectionId);
+          results.push({ connectionId, success: true, result });
+        } catch (error) {
+          results.push({ connectionId, success: false, error: error.message });
+        }
+      }
+      
+      return results;
+    }
+    
+    async sendMessage(sourceId, targetId, message, options = {}) {
+      // Find connection
+      let connection;
+      
+      if (options.connectionId) {
+        connection = this.getConnection(options.connectionId);
+        
+        if (!connection) {
+          throw new Error(`Connection not found: ${options.connectionId}`);
+        }
+        
+        if (connection.source !== sourceId || connection.target !== targetId) {
+          throw new Error(`Connection ${options.connectionId} does not connect ${sourceId} to ${targetId}`);
+        }
+      } else {
+        // Find first active connection between source and target
+        const connections = this.getConnections({
+          source: sourceId,
+          target: targetId,
+          active: true
+        });
+        
+        if (connections.length === 0) {
+          throw new Error(`No active connection found between ${sourceId} and ${targetId}`);
+        }
+        
+        connection = connections[0];
+      }
+      
+      // Apply adapter if specified
+      let adaptedMessage = message;
+      
+      if (options.adapter) {
+        const adapter = typeof options.adapter === 'string' ? 
+          this.getAdapter(options.adapter) : 
+          options.adapter;
+        
+        adaptedMessage = adapter.serialize(message);
+      }
+      
+      // Get protocol
+      const protocol = this.getProtocol(connection.type);
+      
+      try {
+        // Send message
+        const result = await protocol.sendMessage(connection, adaptedMessage);
+        
+        // Update metrics
+        this.metrics.messagesSent++;
+        this.metrics.dataVolume += JSON.stringify(message).length;
+        this.metrics.lastActivity = Date.now();
+        
+        // Emit event
+        this.eventBus.emit('integration:message:sent', {
+          connectionId: connection.id,
+          sourceId,
+          targetId,
+          timestamp: Date.now()
+        });
+        
+        return result;
+      } catch (error) {
+        this.metrics.errors++;
+        
+        this.logSystem.error(`Failed to send message from ${sourceId} to ${targetId}: ${error.message}`);
+        
+        // Emit error event
+        this.eventBus.emit('integration:error', {
+          type: 'message:send',
+          connectionId: connection.id,
+          sourceId,
+          targetId,
+          error: error.message,
+          timestamp: Date.now()
+        });
+        
+        throw error;
+      }
+    }
+    
+    async receiveMessage(targetId, message, connection) {
+      // Get target component
+      const targetComponent = this.getComponent(targetId);
+      
+      if (!targetComponent) {
+        throw new Error(`Target component not found: ${targetId}`);
+      }
+      
+      if (!targetComponent.receiveMessage) {
+        throw new Error(`Target component does not implement receiveMessage: ${targetId}`);
+      }
+      
+      try {
+        // Apply adapter if specified
+        let adaptedMessage = message;
+        
+        if (connection.options && connection.options.adapter) {
+          const adapter = typeof connection.options.adapter === 'string' ? 
+            this.getAdapter(connection.options.adapter) : 
+            connection.options.adapter;
+          
+          adaptedMessage = adapter.deserialize(message);
+        }
+        
+        // Receive message
+        const result = await targetComponent.receiveMessage(adaptedMessage, connection);
+        
+        // Update metrics
+        this.metrics.messagesReceived++;
+        this.metrics.lastActivity = Date.now();
+        
+        // Emit event
+        this.eventBus.emit('integration:message:received', {
+          connectionId: connection.id,
+          sourceId: connection.source,
+          targetId,
+          timestamp: Date.now()
+        });
+        
+        return result;
+      } catch (error) {
+        this.metrics.errors++;
+        
+        this.logSystem.error(`Failed to receive message for ${targetId}: ${error.message}`);
+        
+        // Emit error event
+        this.eventBus.emit('integration:error', {
+          type: 'message:receive',
+          connectionId: connection.id,
+          sourceId: connection.source,
+          targetId,
+          error: error.message,
+          timestamp: Date.now()
+        });
+        
+        throw error;
+      }
+    }
+    
+    createPipeline(pipelineConfig) {
+      const pipelineId = pipelineConfig.id || `pipeline-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      
+      if (this.pipelines.has(pipelineId)) {
+        throw new Error(`Pipeline already exists: ${pipelineId}`);
+      }
+      
+      // Create pipeline
+      const pipeline = {
+        id: pipelineId,
+        name: pipelineConfig.name || `Pipeline ${pipelineId}`,
+        description: pipelineConfig.description || '',
+        stages: [],
+        active: false,
+        createdAt: Date.now()
+      };
+      
+      // Add to pipelines
+      this.pipelines.set(pipelineId, pipeline);
+      
+      // Create connections for each stage
+      if (pipelineConfig.stages && Array.isArray(pipelineConfig.stages)) {
+        for (let i = 0; i < pipelineConfig.stages.length; i++) {
+          const stage = pipelineConfig.stages[i];
+          
+          // Create connection for stage
+          this.createConnection(stage.source, stage.target, {
+            protocol: 'pipeline',
+            pipelineId,
+            stageId: i,
+            pipelineName: pipeline.name,
+            transformer: stage.transformer,
+            filter: stage.filter,
+            stageOptions: stage.options || {}
+          });
+        }
+      }
+      
+      this.logSystem.info(`Created pipeline: ${pipelineId}`);
+      
+      return pipeline;
+    }
+    
+    async activatePipeline(pipelineId) {
+      const pipeline = this.pipelines.get(pipelineId);
+      
+      if (!pipeline) {
+        throw new Error(`Pipeline not found: ${pipelineId}`);
+      }
+      
+      if (pipeline.active) {
+        this.logSystem.warn(`Pipeline already active: ${pipelineId}`);
+        return true;
+      }
+      
+      // Activate all connections in pipeline
+      const connections = this.getConnections({
+        type: 'pipeline',
+        pipelineId
+      });
+      
+      for (const connection of connections) {
+        await this.activateConnection(connection.id);
+      }
+      
+      // Mark pipeline as active
+      pipeline.active = true;
+      pipeline.activatedAt = Date.now();
+      
+      this.logSystem.info(`Activated pipeline: ${pipelineId}`);
+      
+      return true;
+    }
+    
+    async deactivatePipeline(pipelineId) {
+      const pipeline = this.pipelines.get(pipelineId);
+      
+      if (!pipeline) {
+        throw new Error(`Pipeline not found: ${pipelineId}`);
+      }
+      
+      if (!pipeline.active) {
+        this.logSystem.warn(`Pipeline not active: ${pipelineId}`);
+        return true;
+      }
+      
+      // Deactivate all connections in pipeline
+      const connections = this.getConnections({
+        type: 'pipeline',
+        pipelineId
+      });
+      
+      for (const connection of connections) {
+        await this.deactivateConnection(connection.id);
+      }
+      
+      // Mark pipeline as inactive
+      pipeline.active = false;
+      pipeline.deactivatedAt = Date.now();
+      
+      this.logSystem.info(`Deactivated pipeline: ${pipelineId}`);
+      
+      return true;
+    }
+    
+    getPipeline(pipelineId) {
+      return this.pipelines.get(pipelineId);
+    }
+    
+    getPipelines() {
+      return Array.from(this.pipelines.values());
+    }
+    
+    getMetrics() {
+      return {
+        ...this.metrics,
+        timestamp: Date.now()
+      };
+    }
+    
+    async checkHealth() {
+      // Check health of integration layer
+      const health = {
+        id: this.id,
+        name: this.name,
+        status: 'healthy',
+        timestamp: Date.now(),
+        details: {
+          isInitialized: this.isInitialized,
+          isActive: this.isActive,
+          uptime: this.startTime ? Date.now() - this.startTime : 0,
+          components: this.components.size,
+          connections: this.connections.size,
+          activeConnections: Array.from(this.connections.values()).filter(c => c.active).length,
+          pipelines: this.pipelines.size,
+          activePipelines: Array.from(this.pipelines.values()).filter(p => p.active).length,
+          metrics: this.getMetrics()
+        }
+      };
+      
+      // Check if any critical issues
+      if (!this.isInitialized) {
+        health.status = 'unhealthy';
+        health.details.reason = 'Not initialized';
+      } else if (!this.isActive) {
+        health.status = 'degraded';
+        health.details.reason = 'Not active';
+      } else if (this.metrics.errors > 0) {
+        health.status = 'degraded';
+        health.details.reason = `${this.metrics.errors} errors detected`;
+      }
+      
+      return health;
+    }
+  }
+  
+  // Event Bus for integration layer
+  class EventBus {
+    constructor() {
+      this.events = new Map();
+      this.subscriptions = new Map();
+      this.isActive = false;
+    }
+    
+    async initialize() {
+      // Initialize event bus
+      return true;
+    }
+    
+    async activate() {
+      this.isActive = true;
+      return true;
+    }
+    
+    async deactivate() {
+      this.isActive = false;
+      return true;
+    }
+    
+    registerEvent(eventName, description = '') {
+      if (!eventName) {
+        throw new Error("Event name is required");
+      }
+      
+      this.events.set(eventName, {
+        name: eventName,
+        description,
+        registeredAt: Date.now()
+      });
+      
+      return true;
+    }
+    
+    subscribe(eventName, handler) {
+      if (!eventName || typeof handler !== 'function') {
+        throw new Error("Event name and handler function are required");
+      }
+      
+      if (!this.subscriptions.has(eventName)) {
+        this.subscriptions.set(eventName, []);
+      }
+      
+      const subscription = {
+        id: `sub-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        handler,
+        createdAt: Date.now()
+      };
+      
+      this.subscriptions.get(eventName).push(subscription);
+      
+      return subscription.id;
+    }
+    
+    unsubscribe(eventName, subscriptionId) {
+      if (!eventName || !subscriptionId) {
+        throw new Error("Event name and subscription ID are required");
+      }
+      
+      if (!this.subscriptions.has(eventName)) {
+        return false;
+      }
+      
+      const subscriptions = this.subscriptions.get(eventName);
+      const index = subscriptions.findIndex(sub => sub.id === subscriptionId);
+      
+      if (index === -1) {
+        return false;
+      }
+      
+      subscriptions.splice(index, 1);
+      
+      return true;
+    }
+    
+    emit(eventName, data) {
+      if (!this.isActive) {
+        return false;
+      }
+      
+      if (!eventName) {
+        throw new Error("Event name is required");
+      }
+      
+      if (!this.subscriptions.has(eventName)) {
+        return false;
+      }
+      
+      const event = {
+        name: eventName,
+        data,
+        timestamp: Date.now()
+      };
+      
+      const subscriptions = this.subscriptions.get(eventName);
+      
+      // Call handlers asynchronously
+      setTimeout(() => {
+        for (const subscription of subscriptions) {
+          try {
+            subscription.handler(event);
+          } catch (error) {
+            console.error(`Error in event handler for ${eventName}: ${error.message}`);
+          }
+        }
+      }, 0);
+      
+      return true;
+    }
+    
+    getEvents() {
+      return Array.from(this.events.values());
+    }
+  }
+  
+  // Helper classes for logging (same as in other components)
+  class LogSystem {
+    constructor(level = 'info') {
+      this.level = level;
+      this.levels = {
+        debug: 0,
+        info: 1,
+        warn: 2,
+        error: 3
+      };
+    }
+    
+    shouldLog(level) {
+      return this.levels[level] >= this.levels[this.level];
+    }
+    
+    debug(message) {
+      if (this.shouldLog('debug')) {
+        console.log(`[DEBUG] ${message}`);
+      }
+    }
+    
+    info(message) {
+      if (this.shouldLog('info')) {
+        console.log(`[INFO] ${message}`);
+      }
+    }
+    
+    warn(message) {
+      if (this.shouldLog('warn')) {
+        console.warn(`[WARN] ${message}`);
+      }
+    }
+    
+    error(message) {
+      if (this.shouldLog('error')) {
+        console.error(`[ERROR] ${message}`);
+      }
+    }
+  }
+  
+  module.exports = UniversalSystemIntegration;

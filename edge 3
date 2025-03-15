@@ -1,0 +1,1143 @@
+class SystemMonitor {
+  constructor(options = {}) {
+    this.id = options.id || `monitor-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    this.name = options.name || "EdgeNativeUMaaS System Monitor";
+    this.description = options.description || "Real-time monitoring system for EdgeNativeUMaaS";
+    
+    // Core system reference
+    this.edgeNativeSystem = null;
+    
+    // Monitor state
+    this.isInitialized = false;
+    this.isRunning = false;
+    this.monitoringIntervals = new Map();
+    this.alertThresholds = new Map();
+    this.activeAlerts = new Map();
+    this.metricHistory = new Map();
+    this.statusHistory = [];
+    
+    // Configuration
+    this.config = {
+      monitoringInterval: options.monitoringInterval || 5000, // ms
+      historyRetention: options.historyRetention || 1000, // number of data points to keep
+      alertingEnabled: options.alertingEnabled !== false,
+      autoStart: options.autoStart !== false,
+      logLevel: options.logLevel || 'info',
+      ...options.monitorConfig
+    };
+    
+    // Logging
+    this.logSystem = new LogSystem(this.config.logLevel);
+    
+    // Initialize default alert thresholds
+    this.initializeDefaultThresholds();
+  }
+  
+  initializeDefaultThresholds() {
+    // Memory thresholds
+    this.setAlertThreshold('memory.usage.percentage', {
+      warning: 80,
+      critical: 95,
+      description: 'Memory usage percentage'
+    });
+    
+    this.setAlertThreshold('memory.blocks.count', {
+      warning: 1000,
+      critical: 5000,
+      description: 'Number of memory blocks'
+    });
+    
+    // Compute thresholds
+    this.setAlertThreshold('compute.usage.percentage', {
+      warning: 80,
+      critical: 95,
+      description: 'Compute usage percentage'
+    });
+    
+    this.setAlertThreshold('compute.instances.count', {
+      warning: 500,
+      critical: 1000,
+      description: 'Number of compute instances'
+    });
+    
+    // Network thresholds
+    this.setAlertThreshold('network.bandwidth.usage', {
+      warning: 80,
+      critical: 95,
+      description: 'Network bandwidth usage percentage'
+    });
+    
+    this.setAlertThreshold('network.channels.count', {
+      warning: 1000,
+      critical: 5000,
+      description: 'Number of active data channels'
+    });
+    
+    // System thresholds
+    this.setAlertThreshold('system.latency.average', {
+      warning: 100, // ms
+      critical: 500, // ms
+      description: 'Average system latency'
+    });
+    
+    this.setAlertThreshold('system.errors.rate', {
+      warning: 5, // errors per minute
+      critical: 20, // errors per minute
+      description: 'System error rate'
+    });
+    
+    // Security thresholds
+    this.setAlertThreshold('security.threats.active', {
+      warning: 5,
+      critical: 20,
+      description: 'Number of active security threats'
+    });
+    
+    this.setAlertThreshold('security.unauthorized.attempts', {
+      warning: 10, // per minute
+      critical: 50, // per minute
+      description: 'Unauthorized access attempts'
+    });
+  }
+  
+  async initialize(edgeNativeSystem) {
+    this.logSystem.info(`Initializing ${this.name}`);
+    
+    try {
+      // Store reference to the edge native system
+      if (edgeNativeSystem) {
+        this.edgeNativeSystem = edgeNativeSystem;
+      } else {
+        // Create a new edge native system if not provided
+        this.edgeNativeSystem = new EdgeNativeUniversalSystem({
+          name: "Monitored Edge Native System",
+          autoStart: false,
+          logLevel: this.config.logLevel
+        });
+        
+        // Initialize the system
+        await this.edgeNativeSystem.initialize();
+      }
+      
+      // Initialize metric history storage
+      this.initializeMetricHistory();
+      
+      this.isInitialized = true;
+      this.logSystem.info(`${this.name} initialized successfully`);
+      
+      // Auto-start monitoring if configured
+      if (this.config.autoStart) {
+        await this.startMonitoring();
+      }
+      
+      return true;
+    } catch (error) {
+      this.logSystem.error(`Initialization failed: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  initializeMetricHistory() {
+    // Initialize metric history for different components
+    
+    // Memory metrics
+    this.metricHistory.set('memory.usage.percentage', []);
+    this.metricHistory.set('memory.blocks.count', []);
+    this.metricHistory.set('memory.blocks.active', []);
+    this.metricHistory.set('memory.allocation.rate', []);
+    this.metricHistory.set('memory.distribution.active', []);
+    
+    // Compute metrics
+    this.metricHistory.set('compute.usage.percentage', []);
+    this.metricHistory.set('compute.instances.count', []);
+    this.metricHistory.set('compute.instances.active', []);
+    this.metricHistory.set('compute.execution.rate', []);
+    this.metricHistory.set('compute.execution.latency', []);
+    
+    // Network metrics
+    this.metricHistory.set('network.bandwidth.usage', []);
+    this.metricHistory.set('network.channels.count', []);
+    this.metricHistory.set('network.channels.active', []);
+    this.metricHistory.set('network.data.throughput', []);
+    this.metricHistory.set('network.quantum.channels', []);
+    
+    // System metrics
+    this.metricHistory.set('system.latency.average', []);
+    this.metricHistory.set('system.throughput.operations', []);
+    this.metricHistory.set('system.errors.rate', []);
+    this.metricHistory.set('system.uptime', []);
+    this.metricHistory.set('system.health.score', []);
+    
+    // Security metrics
+    this.metricHistory.set('security.threats.active', []);
+    this.metricHistory.set('security.unauthorized.attempts', []);
+    this.metricHistory.set('security.contexts.count', []);
+    this.metricHistory.set('security.tokens.active', []);
+  }
+  
+  async startMonitoring() {
+    if (!this.isInitialized) {
+      throw new Error("System monitor must be initialized before starting monitoring");
+    }
+    
+    if (this.isRunning) {
+      this.logSystem.warn("Monitoring is already running");
+      return false;
+    }
+    
+    this.logSystem.info("Starting system monitoring");
+    
+    // Start the system if not already running
+    if (this.edgeNativeSystem.systemStatus !== 'running') {
+      await this.edgeNativeSystem.start();
+    }
+    
+    // Set up monitoring intervals
+    this.setupMonitoringIntervals();
+    
+    this.isRunning = true;
+    
+    // Record system status
+    this.recordSystemStatus({
+      status: 'monitoring_started',
+      timestamp: Date.now()
+    });
+    
+    this.logSystem.info("System monitoring started successfully");
+    
+    return true;
+  }
+  
+  setupMonitoringIntervals() {
+    // Set up interval for collecting system metrics
+    const metricsInterval = setInterval(() => {
+      this.collectSystemMetrics();
+    }, this.config.monitoringInterval);
+    
+    this.monitoringIntervals.set('metrics', metricsInterval);
+    
+    // Set up interval for checking alert conditions
+    if (this.config.alertingEnabled) {
+      const alertsInterval = setInterval(() => {
+        this.checkAlertConditions();
+      }, this.config.monitoringInterval);
+      
+      this.monitoringIntervals.set('alerts', alertsInterval);
+    }
+    
+    // Set up interval for system health check
+    const healthCheckInterval = setInterval(() => {
+      this.performHealthCheck();
+    }, this.config.monitoringInterval * 2);
+    
+    this.monitoringIntervals.set('healthCheck', healthCheckInterval);
+  }
+  
+  async stopMonitoring() {
+    if (!this.isRunning) {
+      this.logSystem.warn("Monitoring is not running");
+      return false;
+    }
+    
+    this.logSystem.info("Stopping system monitoring");
+    
+    // Clear all monitoring intervals
+    for (const [name, interval] of this.monitoringIntervals.entries()) {
+      clearInterval(interval);
+      this.monitoringIntervals.delete(name);
+    }
+    
+    this.isRunning = false;
+    
+    // Record system status
+    this.recordSystemStatus({
+      status: 'monitoring_stopped',
+      timestamp: Date.now()
+    });
+    
+    this.logSystem.info("System monitoring stopped successfully");
+    
+    return true;
+  }
+  
+  async collectSystemMetrics() {
+    try {
+      // Collect metrics from various system components
+      const timestamp = Date.now();
+      
+      // Memory metrics
+      const memoryMetrics = await this.edgeNativeSystem.universalComputeMemory.getMetrics();
+      this.recordMetric('memory.usage.percentage', memoryMetrics.usagePercentage, timestamp);
+      this.recordMetric('memory.blocks.count', memoryMetrics.totalBlocks, timestamp);
+      this.recordMetric('memory.blocks.active', memoryMetrics.activeBlocks, timestamp);
+      this.recordMetric('memory.allocation.rate', memoryMetrics.allocationRate, timestamp);
+      this.recordMetric('memory.distribution.active', memoryMetrics.activeDistributions, timestamp);
+      
+      // Compute metrics
+      const computeMetrics = await this.edgeNativeSystem.universalComputeMemory.getComputeMetrics();
+      this.recordMetric('compute.usage.percentage', computeMetrics.usagePercentage, timestamp);
+      this.recordMetric('compute.instances.count', computeMetrics.totalInstances, timestamp);
+      this.recordMetric('compute.instances.active', computeMetrics.activeInstances, timestamp);
+      this.recordMetric('compute.execution.rate', computeMetrics.executionsPerSecond, timestamp);
+      this.recordMetric('compute.execution.latency', computeMetrics.averageLatency, timestamp);
+      
+      // Network metrics
+      const networkMetrics = await this.edgeNativeSystem.myceliumNetwork.getMetrics();
+      this.recordMetric('network.bandwidth.usage', networkMetrics.bandwidthUsagePercentage, timestamp);
+      this.recordMetric('network.channels.count', networkMetrics.totalChannels, timestamp);
+      this.recordMetric('network.channels.active', networkMetrics.activeChannels, timestamp);
+      this.recordMetric('network.data.throughput', networkMetrics.dataThroughput, timestamp);
+      
+      // Quantum metrics if available
+      if (this.edgeNativeSystem.quantumDataHighway) {
+        const quantumMetrics = await this.edgeNativeSystem.quantumDataHighway.getMetrics();
+        this.recordMetric('network.quantum.channels', quantumMetrics.activeChannels, timestamp);
+      }
+      
+      // System metrics
+      const systemMetrics = await this.edgeNativeSystem.getSystemMetrics();
+      this.recordMetric('system.latency.average', systemMetrics.averageLatency, timestamp);
+      this.recordMetric('system.throughput.operations', systemMetrics.operationsPerSecond, timestamp);
+      this.recordMetric('system.errors.rate', systemMetrics.errorsPerMinute, timestamp);
+      this.recordMetric('system.uptime', systemMetrics.uptime, timestamp);
+      
+      // Security metrics
+      const securityReport = this.edgeNativeSystem.rainbowShield.getSecurityReport();
+      this.recordMetric('security.threats.active', securityReport.threats.active, timestamp);
+      this.recordMetric('security.unauthorized.attempts', 
+        securityReport.incidents.byType['unauthorized-access-attempt'] || 0, timestamp);
+      this.recordMetric('security.contexts.count', securityReport.securityContexts, timestamp);
+      
+      // Calculate and record system health score
+      const healthScore = this.calculateSystemHealthScore();
+      this.recordMetric('system.health.score', healthScore, timestamp);
+      
+      return {
+        timestamp,
+        memory: memoryMetrics,
+        compute: computeMetrics,
+        network: networkMetrics,
+        system: systemMetrics,
+        security: {
+          threats: securityReport.threats.active,
+          unauthorizedAttempts: securityReport.incidents.byType['unauthorized-access-attempt'] || 0,
+          contexts: securityReport.securityContexts
+        },
+        health: healthScore
+      };
+    } catch (error) {
+      this.logSystem.error(`Error collecting system metrics: ${error.message}`);
+      
+      // Record system status
+      this.recordSystemStatus({
+        status: 'metrics_collection_error',
+        timestamp: Date.now(),
+        error: error.message
+      });
+      
+      return null;
+    }
+  }
+  
+  recordMetric(metricName, value, timestamp = Date.now()) {
+    if (!this.metricHistory.has(metricName)) {
+      this.metricHistory.set(metricName, []);
+    }
+    
+    const metricData = {
+      timestamp,
+      value
+    };
+    
+    const history = this.metricHistory.get(metricName);
+    history.push(metricData);
+    
+    // Trim history if it exceeds retention limit
+    if (history.length > this.config.historyRetention) {
+      history.shift();
+    }
+  }
+  
+  recordSystemStatus(status) {
+    this.statusHistory.push(status);
+    
+    // Trim history if it exceeds retention limit
+    if (this.statusHistory.length > this.config.historyRetention) {
+      this.statusHistory.shift();
+    }
+  }
+  
+  checkAlertConditions() {
+    try {
+      // Check all metrics against their thresholds
+      for (const [metricName, threshold] of this.alertThresholds.entries()) {
+        if (!this.metricHistory.has(metricName)) {
+          continue;
+        }
+        
+        const history = this.metricHistory.get(metricName);
+        
+        if (history.length === 0) {
+          continue;
+        }
+        
+        // Get the most recent value
+        const latestMetric = history[history.length - 1];
+        const value = latestMetric.value;
+        
+        // Check against critical threshold
+        if (threshold.critical !== undefined && value >= threshold.critical) {
+          this.triggerAlert(metricName, 'critical', value, threshold.critical);
+        }
+        // Check against warning threshold
+        else if (threshold.warning !== undefined && value >= threshold.warning) {
+          this.triggerAlert(metricName, 'warning', value, threshold.warning);
+        }
+        // Clear alert if value is back to normal
+        else if (this.activeAlerts.has(metricName)) {
+          this.clearAlert(metricName);
+        }
+      }
+    } catch (error) {
+      this.logSystem.error(`Error checking alert conditions: ${error.message}`);
+    }
+  }
+  
+  triggerAlert(metricName, severity, value, threshold) {
+    const now = Date.now();
+    
+    // Check if this alert is already active
+    if (this.activeAlerts.has(metricName)) {
+      const existingAlert = this.activeAlerts.get(metricName);
+      
+      // Update the alert if severity changed
+      if (existingAlert.severity !== severity) {
+        existingAlert.severity = severity;
+        existingAlert.updatedAt = now;
+        existingAlert.value = value;
+        
+        this.logSystem.warn(`Alert severity changed: ${metricName} is now ${severity} (${value} >= ${threshold})`);
+      }
+    } else {
+      // Create a new alert
+      const alert = {
+        id: `alert-${now}-${Math.floor(Math.random() * 10000)}`,
+        metricName,
+        severity,
+        value,
+        threshold,
+        createdAt: now,
+        updatedAt: now,
+        description: this.alertThresholds.get(metricName).description || metricName
+      };
+      
+      this.activeAlerts.set(metricName, alert);
+      
+      // Log the alert
+      if (severity === 'critical') {
+        this.logSystem.error(`CRITICAL ALERT: ${alert.description} is ${value} (threshold: ${threshold})`);
+      } else {
+        this.logSystem.warn(`WARNING ALERT: ${alert.description} is ${value} (threshold: ${threshold})`);
+      }
+      
+      // Record system status
+      this.recordSystemStatus({
+        status: 'alert_triggered',
+        timestamp: now,
+        alert
+      });
+      
+      // Notify the system about the alert
+      this.notifySystemAboutAlert(alert);
+    }
+  }
+  
+  clearAlert(metricName) {
+    if (!this.activeAlerts.has(metricName)) {
+      return;
+    }
+    
+    const alert = this.activeAlerts.get(metricName);
+    this.activeAlerts.delete(metricName);
+    
+    // Log the cleared alert
+    this.logSystem.info(`Alert cleared: ${alert.description} is now within normal range`);
+    
+    // Record system status
+    this.recordSystemStatus({
+      status: 'alert_cleared',
+      timestamp: Date.now(),
+      alert
+    });
+  }
+  
+  notifySystemAboutAlert(alert) {
+    // Notify the system about the alert so it can take appropriate action
+    if (alert.severity === 'critical') {
+      // For critical alerts, trigger self-healing if available
+      if (this.edgeNativeSystem.selfHealingInfrastructure) {
+        this.edgeNativeSystem.selfHealingInfrastructure.triggerHealing({
+          source: 'SystemMonitor',
+          alertId: alert.id,
+          metricName: alert.metricName,
+          severity: alert.severity,
+          value: alert.value,
+          threshold: alert.threshold
+        });
+      }
+    }
+    
+    // Log the alert in the system's incident log
+    if (this.edgeNativeSystem.rainbowShield) {
+      this.edgeNativeSystem.rainbowShield.logSecurityIncident({
+        type: alert.severity === 'critical' ? 'critical-system-alert' : 'system-alert',
+        details: {
+          alertId: alert.id,
+          metricName: alert.metricName,
+          description: alert.description,
+          value: alert.value,
+          threshold: alert.threshold
+        }
+      });
+    }
+  }
+  
+  setAlertThreshold(metricName, thresholdConfig) {
+    this.alertThresholds.set(metricName, thresholdConfig);
+    
+    // Log the threshold change
+    this.logSystem.debug(`Alert threshold set for ${metricName}: warning=${thresholdConfig.warning}, critical=${thresholdConfig.critical}`);
+    
+    return true;
+  }
+  
+  getAlertThreshold(metricName) {
+    return this.alertThresholds.get(metricName);
+  }
+  
+  getAllAlertThresholds() {
+    const thresholds = {};
+    
+    for (const [metricName, threshold] of this.alertThresholds.entries()) {
+      thresholds[metricName] = threshold;
+    }
+    
+    return thresholds;
+  }
+  
+  getActiveAlerts() {
+    return Array.from(this.activeAlerts.values());
+  }
+  
+  async performHealthCheck() {
+    try {
+      // Perform a comprehensive health check of the system
+      const healthCheckResult = {
+        timestamp: Date.now(),
+        systemStatus: this.edgeNativeSystem.systemStatus,
+        components: {},
+        overallHealth: 'unknown'
+      };
+      
+      // Check memory subsystem
+      healthCheckResult.components.memory = await this.checkMemoryHealth();
+      
+      // Check compute subsystem
+      healthCheckResult.components.compute = await this.checkComputeHealth();
+      
+      // Check network subsystem
+      healthCheckResult.components.network = await this.checkNetworkHealth();
+      
+      // Check security subsystem
+      healthCheckResult.components.security = await this.checkSecurityHealth();
+      
+      // Determine overall health
+      const componentStatuses = Object.values(healthCheckResult.components)
+        .map(component => component.status);
+      
+      if (componentStatuses.includes('critical')) {
+        healthCheckResult.overallHealth = 'critical';
+      } else if (componentStatuses.includes('warning')) {
+        healthCheckResult.overallHealth = 'warning';
+      } else if (componentStatuses.every(status => status === 'healthy')) {
+        healthCheckResult.overallHealth = 'healthy';
+      } else {
+        healthCheckResult.overallHealth = 'degraded';
+      }
+      
+      // Record system status
+      this.recordSystemStatus({
+        status: 'health_check_completed',
+        timestamp: Date.now(),
+        healthCheck: healthCheckResult
+      });
+      
+      // Log health check result
+      this.logSystem.info(`Health check completed: System is ${healthCheckResult.overallHealth}`);
+      
+      return healthCheckResult;
+    } catch (error) {
+      this.logSystem.error(`Error performing health check: ${error.message}`);
+      
+      // Record system status
+      this.recordSystemStatus({
+        status: 'health_check_error',
+        timestamp: Date.now(),
+        error: error.message
+      });
+      
+      return {
+        timestamp: Date.now(),
+        systemStatus: this.edgeNativeSystem.systemStatus,
+        overallHealth: 'unknown',
+        error: error.message
+      };
+    }
+  }
+  
+  async checkMemoryHealth() {
+    // Check the health of the memory subsystem
+    const memoryMetrics = await this.edgeNativeSystem.universalComputeMemory.getMetrics();
+    
+    let status = 'healthy';
+    const issues = [];
+    
+    // Check memory usage
+    if (memoryMetrics.usagePercentage >= 95) {
+      status = 'critical';
+      issues.push('Memory usage is critically high');
+    } else if (memoryMetrics.usagePercentage >= 80) {
+      status = 'warning';
+      issues.push('Memory usage is high');
+    }
+    
+    // Check memory fragmentation
+    if (memoryMetrics.fragmentationPercentage >= 50) {
+      if (status !== 'critical') status = 'warning';
+      issues.push('Memory fragmentation is high');
+    }
+    
+    // Check memory block count
+    if (memoryMetrics.totalBlocks >= 5000) {
+      if (status !== 'critical') status = 'warning';
+      issues.push('Large number of memory blocks');
+    }
+    
+    return {
+      status,
+      issues,
+      metrics: memoryMetrics
+    };
+  }
+  
+  async checkComputeHealth() {
+    // Check the health of the compute subsystem
+    const computeMetrics = await this.edgeNativeSystem.universalComputeMemory.getComputeMetrics();
+    
+    let status = 'healthy';
+    const issues = [];
+    
+    // Check compute usage
+    if (computeMetrics.usagePercentage >= 95) {
+      status = 'critical';
+      issues.push('Compute usage is critically high');
+    } else if (computeMetrics.usagePercentage >= 80) {
+      status = 'warning';
+      issues.push('Compute usage is high');
+    }
+    
+    // Check execution latency
+    if (computeMetrics.averageLatency >= 500) {
+      status = 'critical';
+      issues.push('Compute execution latency is critically high');
+    } else if (computeMetrics.averageLatency >= 100) {
+      if (status !== 'critical') status = 'warning';
+      issues.push('Compute execution latency is high');
+    }
+    
+    // Check error rate
+    if (computeMetrics.errorRate >= 10) {
+      status = 'critical';
+      issues.push('Compute error rate is critically high');
+    } else if (computeMetrics.errorRate >= 5) {
+      if (status !== 'critical') status = 'warning';
+      issues.push('Compute error rate is high');
+    }
+    
+    return {
+      status,
+      issues,
+      metrics: computeMetrics
+    };
+  }
+  
+  async checkNetworkHealth() {
+    // Check the health of the network subsystem
+    const networkMetrics = await this.edgeNativeSystem.myceliumNetwork.getMetrics();
+    
+    let status = 'healthy';
+    const issues = [];
+    
+    // Check bandwidth usage
+    if (networkMetrics.bandwidthUsagePercentage >= 95) {
+      status = 'critical';
+      issues.push('Network bandwidth usage is critically high');
+    } else if (networkMetrics.bandwidthUsagePercentage >= 80) {
+      status = 'warning';
+      issues.push('Network bandwidth usage is high');
+    }
+    
+    // Check channel count
+    if (networkMetrics.totalChannels >= 5000) {
+      if (status !== 'critical') status = 'warning';
+      issues.push('Large number of network channels');
+    }
+    
+    // Check packet loss
+    if (networkMetrics.packetLossPercentage >= 5) {
+      status = 'critical';
+      issues.push('Network packet loss is critically high');
+    } else if (networkMetrics.packetLossPercentage >= 1) {
+      if (status !== 'critical') status = 'warning';
+      issues.push('Network packet loss is high');
+    }
+    
+    // Check latency
+    if (networkMetrics.averageLatency >= 200) {
+      status = 'critical';
+      issues.push('Network latency is critically high');
+    } else if (networkMetrics.averageLatency >= 100) {
+      if (status !== 'critical') status = 'warning';
+      issues.push('Network latency is high');
+    }
+    
+    return {
+      status,
+      issues,
+      metrics: networkMetrics
+    };
+  }
+  
+  async checkSecurityHealth() {
+    // Check the health of the security subsystem
+    const securityReport = this.edgeNativeSystem.rainbowShield.getSecurityReport();
+    
+    let status = 'healthy';
+    const issues = [];
+    
+    // Check active threats
+    if (securityReport.threats.active >= 20) {
+      status = 'critical';
+      issues.push('Critical number of active security threats');
+    } else if (securityReport.threats.active >= 5) {
+      status = 'warning';
+      issues.push('High number of active security threats');
+    }
+    
+    // Check unauthorized access attempts
+    const unauthorizedAttempts = securityReport.incidents.byType['unauthorized-access-attempt'] || 0;
+    if (unauthorizedAttempts >= 50) {
+      status = 'critical';
+      issues.push('Critical number of unauthorized access attempts');
+    } else if (unauthorizedAttempts >= 10) {
+      if (status !== 'critical') status = 'warning';
+      issues.push('High number of unauthorized access attempts');
+    }
+    
+    // Check token tampering
+    const tokenTampering = securityReport.incidents.byType['token-tampering-detected'] || 0;
+    if (tokenTampering > 0) {
+      status = 'critical';
+      issues.push('Token tampering detected');
+    }
+    
+    return {
+      status,
+      issues,
+      metrics: {
+        activeThreats: securityReport.threats.active,
+        unauthorizedAttempts,
+        tokenTampering,
+        activeLayers: securityReport.activeLayers
+      }
+    };
+  }
+  
+  calculateSystemHealthScore() {
+    // Calculate a health score from 0 to 100 based on various metrics
+    try {
+      let score = 100;
+      
+      // Factors that reduce the health score
+      
+      // Memory usage (0-30 points)
+      const memoryUsage = this.getLatestMetricValue('memory.usage.percentage') || 0;
+      if (memoryUsage > 90) {
+        score -= 30;
+      } else if (memoryUsage > 80) {
+        score -= 20;
+      } else if (memoryUsage > 70) {
+        score -= 10;
+      }
+      
+      // Compute usage (0-20 points)
+      const computeUsage = this.getLatestMetricValue('compute.usage.percentage') || 0;
+      if (computeUsage > 90) {
+        score -= 20;
+      } else if (computeUsage > 80) {
+        score -= 15;
+      } else if (computeUsage > 70) {
+        score -= 10;
+      }
+      
+      // Network bandwidth (0-15 points)
+      const networkUsage = this.getLatestMetricValue('network.bandwidth.usage') || 0;
+      if (networkUsage > 90) {
+        score -= 15;
+      } else if (networkUsage > 80) {
+        score -= 10;
+      } else if (networkUsage > 70) {
+        score -= 5;
+      }
+      
+      // System latency (0-15 points)
+      const systemLatency = this.getLatestMetricValue('system.latency.average') || 0;
+      if (systemLatency > 500) {
+        score -= 15;
+      } else if (systemLatency > 200) {
+        score -= 10;
+      } else if (systemLatency > 100) {
+        score -= 5;
+      }
+      
+      // Error rate (0-10 points)
+      const errorRate = this.getLatestMetricValue('system.errors.rate') || 0;
+      if (errorRate > 20) {
+        score -= 10;
+      } else if (errorRate > 10) {
+        score -= 7;
+      } else if (errorRate > 5) {
+        score -= 3;
+      }
+      
+      // Security threats (0-10 points)
+      const securityThreats = this.getLatestMetricValue('security.threats.active') || 0;
+      if (securityThreats > 20) {
+        score -= 10;
+      } else if (securityThreats > 10) {
+        score -= 7;
+      } else if (securityThreats > 5) {
+        score -= 3;
+      }
+      
+      // Ensure score is between 0 and 100
+      score = Math.max(0, Math.min(100, score));
+      
+      return score;
+    } catch (error) {
+      this.logSystem.error(`Error calculating health score: ${error.message}`);
+      return 50; // Default to middle value on error
+    }
+  }
+  
+  getLatestMetricValue(metricName) {
+    if (!this.metricHistory.has(metricName)) {
+      return null;
+    }
+    
+    const history = this.metricHistory.get(metricName);
+    
+    if (history.length === 0) {
+      return null;
+    }
+    
+    return history[history.length - 1].value;
+  }
+  
+  getMetricHistory(metricName, limit = null) {
+    if (!this.metricHistory.has(metricName)) {
+      return [];
+    }
+    
+    const history = this.metricHistory.get(metricName);
+    
+    if (limit && limit < history.length) {
+      return history.slice(history.length - limit);
+    }
+    
+    return history;
+  }
+  
+  getSystemStatusHistory(limit = null) {
+    if (limit && limit < this.statusHistory.length) {
+      return this.statusHistory.slice(this.statusHistory.length - limit);
+    }
+    
+    return this.statusHistory;
+  }
+  
+  async getSystemSnapshot() {
+    // Get a complete snapshot of the current system state
+    try {
+      const snapshot = {
+        id: `snapshot-${Date.now()}`,
+        timestamp: Date.now(),
+        system: {
+          id: this.edgeNativeSystem.id,
+          name: this.edgeNativeSystem.name,
+          status: this.edgeNativeSystem.systemStatus,
+          uptime: this.edgeNativeSystem.getUptime()
+        },
+        metrics: {},
+        alerts: this.getActiveAlerts(),
+        health: {
+          score: this.calculateSystemHealthScore(),
+          components: {}
+        }
+      };
+      
+      // Get latest metrics
+      for (const [metricName, history] of this.metricHistory.entries()) {
+        if (history.length > 0) {
+          snapshot.metrics[metricName] = history[history.length - 1].value;
+        }
+      }
+      
+      // Get component health
+      const healthCheck = await this.performHealthCheck();
+      snapshot.health.components = healthCheck.components;
+      snapshot.health.overallHealth = healthCheck.overallHealth;
+      
+      return snapshot;
+    } catch (error) {
+      this.logSystem.error(`Error creating system snapshot: ${error.message}`);
+      
+      return {
+        id: `snapshot-${Date.now()}`,
+        timestamp: Date.now(),
+        error: error.message,
+        system: {
+          id: this.edgeNativeSystem.id,
+          name: this.edgeNativeSystem.name,
+          status: this.edgeNativeSystem.systemStatus
+        }
+      };
+    }
+  }
+  
+  async shutdown() {
+    this.logSystem.info("Shutting down system monitor");
+    
+    // Stop monitoring
+    if (this.isRunning) {
+      await this.stopMonitoring();
+    }
+    
+    // Clear all data
+    this.metricHistory.clear();
+    this.activeAlerts.clear();
+    this.statusHistory = [];
+    
+    this.isInitialized = false;
+    
+    this.logSystem.info("System monitor shut down successfully");
+    
+    return true;
+  }
+  
+  // Utility methods
+  
+  getMetricSummary(metricName, period = 'hour') {
+    if (!this.metricHistory.has(metricName)) {
+      return null;
+    }
+    
+    const history = this.metricHistory.get(metricName);
+    
+    if (history.length === 0) {
+      return null;
+    }
+    
+    // Determine time threshold based on period
+    const now = Date.now();
+    let timeThreshold;
+    
+    switch (period) {
+      case 'minute':
+        timeThreshold = now - (60 * 1000);
+        break;
+      case 'hour':
+        timeThreshold = now - (60 * 60 * 1000);
+        break;
+      case 'day':
+        timeThreshold = now - (24 * 60 * 60 * 1000);
+        break;
+      default:
+        timeThreshold = 0; // All data
+    }
+    
+    // Filter data points within the period
+    const filteredData = history.filter(point => point.timestamp >= timeThreshold);
+    
+    if (filteredData.length === 0) {
+      return null;
+    }
+    
+    // Calculate statistics
+    const values = filteredData.map(point => point.value);
+    const sum = values.reduce((acc, val) => acc + val, 0);
+    const avg = sum / values.length;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const current = history[history.length - 1].value;
+    
+    // Calculate trend (positive, negative, or stable)
+    let trend = 'stable';
+    if (filteredData.length > 1) {
+      const firstValue = filteredData[0].value;
+      const lastValue = filteredData[filteredData.length - 1].value;
+      
+      if (lastValue > firstValue * 1.1) {
+        trend = 'increasing';
+      } else if (lastValue < firstValue * 0.9) {
+        trend = 'decreasing';
+      }
+    }
+    
+    return {
+      metricName,
+      period,
+      dataPoints: filteredData.length,
+      current,
+      min,
+      max,
+      avg,
+      trend
+    };
+  }
+  
+  getAllMetricSummaries(period = 'hour') {
+    const summaries = {};
+    
+    for (const metricName of this.metricHistory.keys()) {
+      const summary = this.getMetricSummary(metricName, period);
+      if (summary) {
+        summaries[metricName] = summary;
+      }
+    }
+    
+    return summaries;
+  }
+  
+  getAlertSummary(period = 'day') {
+    // Determine time threshold based on period
+    const now = Date.now();
+    let timeThreshold;
+    
+    switch (period) {
+      case 'hour':
+        timeThreshold = now - (60 * 60 * 1000);
+        break;
+      case 'day':
+        timeThreshold = now - (24 * 60 * 60 * 1000);
+        break;
+      case 'week':
+        timeThreshold = now - (7 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        timeThreshold = 0; // All data
+    }
+    
+    // Filter status history for alert events
+    const alertEvents = this.statusHistory.filter(status => 
+      (status.status === 'alert_triggered' || status.status === 'alert_cleared') &&
+      status.timestamp >= timeThreshold
+    );
+    
+    // Count alerts by type and severity
+    const alertCounts = {
+      total: 0,
+      triggered: 0,
+      cleared: 0,
+      bySeverity: {
+        warning: 0,
+        critical: 0
+      },
+      byMetric: {}
+    };
+    
+    for (const event of alertEvents) {
+      if (event.status === 'alert_triggered') {
+        alertCounts.total++;
+        alertCounts.triggered++;
+        
+        // Count by severity
+        if (event.alert.severity) {
+          alertCounts.bySeverity[event.alert.severity] = 
+            (alertCounts.bySeverity[event.alert.severity] || 0) + 1;
+        }
+        
+        // Count by metric
+        if (event.alert.metricName) {
+          alertCounts.byMetric[event.alert.metricName] = 
+            (alertCounts.byMetric[event.alert.metricName] || 0) + 1;
+        }
+      } else if (event.status === 'alert_cleared') {
+        alertCounts.cleared++;
+      }
+    }
+    
+    // Get currently active alerts
+    const activeAlerts = this.getActiveAlerts();
+    
+    return {
+      period,
+      counts: alertCounts,
+      activeAlerts: activeAlerts.length,
+      activeAlertDetails: activeAlerts
+    };
+  }
+}
+
+// Helper class for logging (same as in EdgeNativeUniversalSystem)
+class LogSystem {
+  constructor(level = 'info') {
+    this.level = level;
+    this.levels = {
+      debug: 0,
+      info: 1,
+      warn: 2,
+      error: 3
+    };
+  }
+  
+  shouldLog(level) {
+    return this.levels[level] >= this.levels[this.level];
+  }
+  
+  debug(message) {
+    if (this.shouldLog('debug')) {
+      console.log(`[DEBUG] ${message}`);
+    }
+  }
+  
+  info(message) {
+    if (this.shouldLog('info')) {
+      console.log(`[INFO] ${message}`);
+    }
+  }
+  
+  warn(message) {
+    if (this.shouldLog('warn')) {
+      console.warn(`[WARN] ${message}`);
+    }
+  }
+  
+  error(message) {
+    if (this.shouldLog('error')) {
+      console.error(`[ERROR] ${message}`);
+    }
+  }
+}
+
+module.exports = SystemMonitor;

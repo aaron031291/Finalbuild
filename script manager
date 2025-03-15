@@ -1,0 +1,427 @@
+import os
+import hashlib
+import difflib
+import logging
+import time
+import shutil
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Set, Tuple
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent
+
+class ScriptIntegrator:
+    """Main class for integrating multiple scripts into a unified script."""
+    
+    def __init__(self, 
+                 scripts_dir: str = "scripts", 
+                 output_file: str = "unified_script.py",
+                 backup_dir: str = "backups",
+                 log_file: str = "script_integration.log",
+                 extensions: tuple = (".py", ".js", ".sh", ".pl", ".rb")):
+        """
+        Initialize the ScriptIntegrator.
+        
+        Args:
+            scripts_dir: Directory containing scripts to integrate
+            output_file: Path to the output unified script
+            backup_dir: Directory to store backups of the unified script
+            log_file: Path to the log file
+            extensions: Tuple of file extensions to consider as scripts
+        """
+        self.scripts_dir = Path(scripts_dir)
+        self.output_file = Path(output_file)
+        self.backup_dir = Path(backup_dir)
+        self.extensions = extensions
+        
+        # Create directories if they don't exist
+        self.scripts_dir.mkdir(exist_ok=True)
+        self.backup_dir.mkdir(exist_ok=True)
+        
+        # Configure logging
+        logging.basicConfig(
+            filename=log_file,
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        
+        # Add console handler
+        console = logging.StreamHandler()
+        console.setLevel(logging.INFO)
+        console.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logging.getLogger('').addHandler(console)
+        
+        self.logger = logging.getLogger(__name__)
+        self.logger.info(f"ScriptIntegrator initialized with scripts directory: {self.scripts_dir}")
+        self.logger.info(f"Output file will be: {self.output_file}")
+        self.logger.info(f"Monitoring for file extensions: {self.extensions}")
+
+    def collect_scripts(self) -> List[Path]:
+        """
+        Collect all script files from the scripts directory.
+        
+        Returns:
+            List of Path objects for script files
+        """
+        self.logger.info(f"Collecting scripts from {self.scripts_dir}")
+        scripts = []
+        
+        try:
+            for file_path in self.scripts_dir.rglob('*'):
+                if file_path.is_file() and file_path.suffix.lower() in self.extensions:
+                    scripts.append(file_path)
+            
+            self.logger.info(f"Collected {len(scripts)} script files")
+            return scripts
+        
+        except Exception as e:
+            self.logger.error(f"Error collecting scripts: {str(e)}")
+            return []
+
+    def compute_file_hash(self, file_path: Path) -> str:
+        """
+        Compute MD5 hash of a file.
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            MD5 hash of the file content
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                return hashlib.md5(f.read()).hexdigest()
+        except Exception as e:
+            self.logger.error(f"Error computing hash for {file_path}: {str(e)}")
+            return ""
+
+    def deduplicate_scripts(self, scripts: List[Path]) -> Tuple[List[Path], Dict[str, List[Path]]]:
+        """
+        Deduplicate script files based on content hash.
+        
+        Args:
+            scripts: List of script file paths
+            
+        Returns:
+            Tuple of (unique scripts, duplicate groups)
+        """
+        self.logger.info("Deduplicating scripts")
+        
+        # Group files by size first (optimization)
+        size_groups = {}
+        for script in scripts:
+            try:
+                size = script.stat().st_size
+                if size not in size_groups:
+                    size_groups[size] = []
+                size_groups[size].append(script)
+            except Exception as e:
+                self.logger.error(f"Error getting size of {script}: {str(e)}")
+        
+        # For each size group, compute hashes
+        unique_scripts = []
+        hash_to_file = {}
+        duplicate_groups = {}
+        
+        for size, size_group in size_groups.items():
+            if len(size_group) == 1:
+                # Only one file with this size, must be unique
+                unique_scripts.append(size_group[0])
+                continue
+                
+            # Multiple files with same size, check hashes
+            for script in size_group:
+                file_hash = self.compute_file_hash(script)
+                if not file_hash:
+                    continue
+                    
+                if file_hash in hash_to_file:
+                    # This is a duplicate
+                    if file_hash not in duplicate_groups:
+                        duplicate_groups[file_hash] = [hash_to_file[file_hash]]
+                    duplicate_groups[file_hash].append(script)
+                    self.logger.info(f"Found duplicate: {script} (same as {hash_to_file[file_hash]})")
+                else:
+                    # This is unique
+                    hash_to_file[file_hash] = script
+                    unique_scripts.append(script)
+        
+        self.logger.info(f"Found {len(unique_scripts)} unique scripts and {sum(len(group) for group in duplicate_groups.values())} duplicates")
+        return unique_scripts, duplicate_groups
+
+    def group_scripts_by_name(self, scripts: List[Path]) -> Dict[str, List[Path]]:
+        """
+        Group scripts by their base name for merging versions.
+        
+        Args:
+            scripts: List of script file paths
+            
+        Returns:
+            Dictionary mapping script names to lists of file paths
+        """
+        script_groups = {}
+        
+        for script in scripts:
+            base_name = script.stem
+            if base_name not in script_groups:
+                script_groups[base_name] = []
+            script_groups[base_name].append(script)
+        
+        # Filter to only include groups with multiple versions
+        version_groups = {name: paths for name, paths in script_groups.items() if len(paths) > 1}
+        
+        if version_groups:
+            self.logger.info(f"Found {len(version_groups)} scripts with multiple versions")
+            for name, paths in version_groups.items():
+                self.logger.info(f"Script '{name}' has {len(paths)} versions: {', '.join(str(p) for p in paths)}")
+        
+        return script_groups
+
+    def merge_script_versions(self, script_paths: List[Path]) -> str:
+        """
+        Merge multiple versions of a script, preserving all logic.
+        
+        Args:
+            script_paths: List of paths to different versions of the same script
+            
+        Returns:
+            Merged content as a string
+        """
+        if not script_paths:
+            return ""
+            
+        # Sort by modification time (newest first)
+        script_paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        newest_script = script_paths[0]
+        
+        try:
+            with open(newest_script, 'r', encoding='utf-8') as f:
+                newest_content = f.read()
+                
+            if len(script_paths) == 1:
+                return newest_content
+                
+            # Start with the newest version
+            merged_content = f"# MERGED SCRIPT: {newest_script.name}\n"
+            merged_content += f"# Latest version from: {newest_script}\n"
+            merged_content += f"# Merged on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            merged_content += newest_content + "\n\n"
+            
+            # Add older versions with their unique content
+            for older_script in script_paths[1:]:
+                try:
+                    with open(older_script, 'r', encoding='utf-8') as f:
+                        older_content = f.read()
+                    
+                    # Use difflib to find differences
+                    newest_lines = newest_content.splitlines()
+                    older_lines = older_content.splitlines()
+                    
+                    diff = difflib.unified_diff(
+                        newest_lines, older_lines, 
+                        fromfile=str(newest_script),
+                        tofile=str(older_script),
+                        lineterm=''
+                    )
+                    
+                    # Extract lines unique to the older version
+                    unique_lines = []
+                    for line in diff:
+                        if line.startswith('+') and not line.startswith('+++'):
+                            unique_lines.append(line[1:])
+                    
+                    if unique_lines:
+                        merged_content += f"\n# === UNIQUE CONTENT FROM {older_script.name} ===\n"
+                        merged_content += "'''\n"
+                        merged_content += '\n'.join(unique_lines)
+                        merged_content += "\n'''\n"
+                        
+                        self.logger.info(f"Merged unique content from {older_script} into {newest_script}")
+                
+                except Exception as e:
+                    self.logger.error(f"Error merging from {older_script}: {str(e)}")
+            
+            return merged_content
+            
+        except Exception as e:
+            self.logger.error(f"Error reading newest script {newest_script}: {str(e)}")
+            return ""
+
+    def create_unified_script(self, script_groups: Dict[str, List[Path]]) -> bool:
+        """
+        Create a unified script from all script groups.
+        
+        Args:
+            script_groups: Dictionary mapping script names to lists of file paths
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        self.logger.info(f"Creating unified script: {self.output_file}")
+        
+        # Create backup of existing unified script
+        if self.output_file.exists():
+            try:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_path = self.backup_dir / f"{self.output_file.stem}_{timestamp}{self.output_file.suffix}"
+                shutil.copy2(self.output_file, backup_path)
+                self.logger.info(f"Created backup: {backup_path}")
+            except Exception as e:
+                self.logger.error(f"Error creating backup: {str(e)}")
+        
+        try:
+            with open(self.output_file, 'w', encoding='utf-8') as out_file:
+                # Write header
+                out_file.write(f"# UNIFIED SCRIPT\n")
+                out_file.write(f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                out_file.write(f"# Contains {len(script_groups)} scripts\n\n")
+                
+                # Import common modules that might be needed
+                out_file.write("import os\n")
+                out_file.write("import sys\n")
+                out_file.write("import logging\n")
+                out_file.write("import datetime\n\n")
+                
+                # Setup logging
+                out_file.write("# Setup logging\n")
+                out_file.write("logging.basicConfig(\n")
+                out_file.write("    level=logging.INFO,\n")
+                out_file.write("    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'\n")
+                out_file.write(")\n\n")
+                
+                # Write each script group
+                for script_name, script_paths in script_groups.items():
+                    out_file.write(f"\n# {'=' * 40}\n")
+                    out_file.write(f"# SCRIPT: {script_name}\n")
+                    out_file.write(f"# {'=' * 40}\n\n")
+                    
+                    # Merge versions if needed
+                    merged_content = self.merge_script_versions(script_paths)
+                    out_file.write(merged_content)
+                    out_file.write("\n\n")
+                
+                # Write main execution block
+                out_file.write("\n# {'=' * 40}\n")
+                out_file.write("# MAIN EXECUTION\n")
+                out_file.write("# {'=' * 40}\n\n")
+                out_file.write("if __name__ == '__main__':\n")
+                out_file.write("    print('Unified script execution started')\n")
+                out_file.write("    # Add your main execution logic here\n")
+                out_file.write("    print('Unified script execution completed')\n")
+            
+            self.logger.info(f"Successfully created unified script with {len(script_groups)} script groups")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error creating unified script: {str(e)}")
+            return False
+
+    def run_integration(self) -> bool:
+        """
+        Run the full integration process.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        self.logger.info("Starting script integration process")
+        
+        try:
+            # Step 1: Collect scripts
+            scripts = self.collect_scripts()
+            if not scripts:
+                self.logger.warning("No scripts found to integrate")
+                return False
+            
+            # Step 2: Deduplicate scripts
+            unique_scripts, duplicate_groups = self.deduplicate_scripts(scripts)
+            
+            # Step 3: Group scripts by name for version merging
+            script_groups = self.group_scripts_by_name(unique_scripts)
+            
+            # Step 4: Create unified script
+            success = self.create_unified_script(script_groups)
+            
+            self.logger.info("Script integration process completed")
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"Error during integration process: {str(e)}")
+            return False
+
+
+class ScriptChangeHandler(FileSystemEventHandler):
+    """Handler for file system events in the scripts directory."""
+    
+    def __init__(self, integrator: ScriptIntegrator):
+        """
+        Initialize the handler.
+        
+        Args:
+            integrator: ScriptIntegrator instance to use for integration
+        """
+        self.integrator = integrator
+        self.logger = logging.getLogger(__name__)
+        self._last_integration_time = 0
+        self._integration_cooldown = 5  # seconds
+    
+    def on_any_event(self, event):
+        """
+        Handle any file system event.
+        
+        Args:
+            event: File system event
+        """
+        # Only process file creation and modification events
+        if not isinstance(event, (FileCreatedEvent, FileModifiedEvent)):
+            return
+            
+        # Ignore events for non-script files
+        if not event.src_path.endswith(self.integrator.extensions):
+            return
+            
+        # Implement cooldown to prevent multiple rapid integrations
+        current_time = time.time()
+        if current_time - self._last_integration_time < self._integration_cooldown:
+            return
+            
+        self._last_integration_time = current_time
+        
+        self.logger.info(f"Detected {event.event_type} event for {event.src_path}")
+        self.logger.info("Triggering script integration")
+        
+        # Run integration in a separate thread to avoid blocking the file system watcher
+        import threading
+        threading.Thread(target=self.integrator.run_integration).start()
+
+
+def main():
+    """Main function to run the script integrator."""
+    # Create integrator
+    integrator = ScriptIntegrator(
+        scripts_dir="scripts",
+        output_file="unified_script.py",
+        backup_dir="backups",
+        log_file="script_integration.log"
+    )
+    
+    # Run initial integration
+    integrator.run_integration()
+    
+    # Set up file system observer
+    event_handler = ScriptChangeHandler(integrator)
+    observer = Observer()
+    observer.schedule(event_handler, str(integrator.scripts_dir), recursive=True)
+    observer.start()
+    
+    try:
+        print(f"Monitoring {integrator.scripts_dir} for changes. Press Ctrl+C to stop.")
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
+
+
+if __name__ == "__main__":
+    main()

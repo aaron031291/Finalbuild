@@ -1,0 +1,21 @@
+// Monitor block time
+function monitorBlockTime() {
+  const metrics = blockchain.getMetrics();
+  const averageBlockTime = metrics.network.averageBlockTime;
+  
+  console.log(`Current Average Block Time: ${averageBlockTime}ms`);
+  
+  // Adjust block time if needed
+  if (averageBlockTime < 5000) {
+    // Block time too short, increase difficulty
+    blockchain.config.difficulty += 1;
+    console.log(`Increased difficulty to ${blockchain.config.difficulty}`);
+  } else if (averageBlockTime > 20000) {
+    // Block time too long, decrease difficulty
+    blockchain.config.difficulty = Math.max(1, blockchain.config.difficulty - 1);
+    console.log(`Decreased difficulty to ${blockchain.config.difficulty}`);
+  }
+}
+
+// Run monitoring every 10 minutes
+setInterval(monitorBlockTime, 10 * 60 * 1000);

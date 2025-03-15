@@ -1,0 +1,1812 @@
+class PerformanceBenchmark {
+  constructor(options = {}) {
+    this.id = options.id || `benchmark-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    this.name = options.name || "EdgeNativeUMaaS Performance Benchmark";
+    this.description = options.description || "Performance benchmarking for the EdgeNativeUMaaS system";
+    
+    // Core system
+    this.edgeNativeSystem = null;
+    
+    // Benchmark state
+    this.isInitialized = false;
+    this.benchmarks = new Map();
+    this.activeBenchmarks = new Map();
+    this.benchmarkResults = [];
+    
+    // Configuration
+    this.config = {
+      systemOptions: options.systemOptions || {},
+      benchmarksToRun: options.benchmarksToRun || ['memory', 'compute', 'network', 'throughput', 'latency'],
+      iterations: options.iterations || 5,
+      warmupIterations: options.warmupIterations || 2,
+      cooldownBetweenBenchmarks: options.cooldownBetweenBenchmarks || 2000, // ms
+      logLevel: options.logLevel || 'info',
+      ...options.benchmarkConfig
+    };
+    
+    // Logging
+    this.logSystem = new LogSystem(this.config.logLevel);
+    
+    // Initialize benchmarks
+    this.initializeBenchmarks();
+  }
+  
+  initializeBenchmarks() {
+    // Memory benchmarks
+    this.benchmarks.set('memory', {
+      name: 'Memory Performance',
+      description: 'Benchmarks for memory operations',
+      tests: [
+        {
+          id: 'memory-write-speed',
+          name: 'Memory Write Speed',
+          run: this.benchmarkMemoryWriteSpeed.bind(this)
+        },
+        {
+          id: 'memory-read-speed',
+          name: 'Memory Read Speed',
+          run: this.benchmarkMemoryReadSpeed.bind(this)
+        },
+        {
+          id: 'memory-distribution-speed',
+          name: 'Memory Distribution Speed',
+          run: this.benchmarkMemoryDistributionSpeed.bind(this)
+        }
+      ]
+    });
+    
+    // Compute benchmarks
+    this.benchmarks.set('compute', {
+      name: 'Compute Performance',
+      description: 'Benchmarks for compute operations',
+      tests: [
+        {
+          id: 'compute-allocation-speed',
+          name: 'Compute Allocation Speed',
+          run: this.benchmarkComputeAllocationSpeed.bind(this)
+        },
+        {
+          id: 'compute-execution-speed',
+          name: 'Compute Execution Speed',
+          run: this.benchmarkComputeExecutionSpeed.bind(this)
+        },
+        {
+          id: 'compute-parallel-execution',
+          name: 'Compute Parallel Execution',
+          run: this.benchmarkComputeParallelExecution.bind(this)
+        }
+      ]
+    });
+    
+    // Network benchmarks
+    this.benchmarks.set('network', {
+      name: 'Network Performance',
+      description: 'Benchmarks for network operations',
+      tests: [
+        {
+          id: 'network-channel-creation-speed',
+          name: 'Network Channel Creation Speed',
+          run: this.benchmarkNetworkChannelCreationSpeed.bind(this)
+        },
+        {
+          id: 'network-data-transfer-speed',
+          name: 'Network Data Transfer Speed',
+          run: this.benchmarkNetworkDataTransferSpeed.bind(this)
+        },
+        {
+          id: 'network-quantum-highway-speed',
+          name: 'Quantum Highway Speed',
+          run: this.benchmarkQuantumHighwaySpeed.bind(this)
+        }
+      ]
+    });
+    
+    // Throughput benchmarks
+    this.benchmarks.set('throughput', {
+      name: 'System Throughput',
+      description: 'Benchmarks for system throughput',
+      tests: [
+        {
+          id: 'throughput-memory-operations',
+          name: 'Memory Operations Throughput',
+          run: this.benchmarkMemoryOperationsThroughput.bind(this)
+        },
+        {
+          id: 'throughput-compute-operations',
+          name: 'Compute Operations Throughput',
+          run: this.benchmarkComputeOperationsThroughput.bind(this)
+        },
+        {
+          id: 'throughput-network-operations',
+          name: 'Network Operations Throughput',
+          run: this.benchmarkNetworkOperationsThroughput.bind(this)
+        }
+      ]
+    });
+    
+    // Latency benchmarks
+    this.benchmarks.set('latency', {
+      name: 'System Latency',
+      description: 'Benchmarks for system latency',
+      tests: [
+        {
+          id: 'latency-memory-access',
+          name: 'Memory Access Latency',
+          run: this.benchmarkMemoryAccessLatency.bind(this)
+        },
+        {
+          id: 'latency-compute-invocation',
+          name: 'Compute Invocation Latency',
+          run: this.benchmarkComputeInvocationLatency.bind(this)
+        },
+        {
+          id: 'latency-network-round-trip',
+          name: 'Network Round-Trip Latency',
+          run: this.benchmarkNetworkRoundTripLatency.bind(this)
+        }
+      ]
+    });
+    
+    // Scalability benchmarks
+    this.benchmarks.set('scalability', {
+      name: 'System Scalability',
+      description: 'Benchmarks for system scalability',
+      tests: [
+        {
+          id: 'scalability-memory-blocks',
+          name: 'Memory Blocks Scalability',
+          run: this.benchmarkMemoryBlocksScalability.bind(this)
+        },
+        {
+          id: 'scalability-compute-instances',
+          name: 'Compute Instances Scalability',
+          run: this.benchmarkComputeInstancesScalability.bind(this)
+        },
+        {
+          id: 'scalability-concurrent-channels',
+          name: 'Concurrent Channels Scalability',
+          run: this.benchmarkConcurrentChannelsScalability.bind(this)
+        }
+      ]
+    });
+    
+    // Security benchmarks
+    this.benchmarks.set('security', {
+      name: 'Security Performance',
+      description: 'Benchmarks for security operations',
+      tests: [
+        {
+          id: 'security-context-creation-speed',
+          name: 'Security Context Creation Speed',
+          run: this.benchmarkSecurityContextCreationSpeed.bind(this)
+        },
+        {
+          id: 'security-authentication-speed',
+          name: 'Authentication Speed',
+          run: this.benchmarkAuthenticationSpeed.bind(this)
+        },
+        {
+          id: 'security-data-protection-overhead',
+          name: 'Data Protection Overhead',
+          run: this.benchmarkDataProtectionOverhead.bind(this)
+        }
+      ]
+    });
+  }
+  
+  async initialize() {
+    this.logSystem.info(`Initializing ${this.name}`);
+    
+    try {
+      // Create the edge native system
+      this.edgeNativeSystem = new EdgeNativeUniversalSystem({
+        name: "Benchmark Edge Native System",
+        autoStart: false,
+        logLevel: this.config.logLevel,
+        ...this.config.systemOptions
+      });
+      
+      // Initialize the system
+      await this.edgeNativeSystem.initialize();
+      
+      this.isInitialized = true;
+      this.logSystem.info(`${this.name} initialized successfully`);
+      
+      return true;
+    } catch (error) {
+      this.logSystem.error(`Initialization failed: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async runBenchmark(benchmarkId, testId) {
+    if (!this.isInitialized) {
+      throw new Error("Benchmark system must be initialized before running benchmarks");
+    }
+    
+    if (!this.benchmarks.has(benchmarkId)) {
+      throw new Error(`Unknown benchmark: ${benchmarkId}`);
+    }
+    
+    const benchmark = this.benchmarks.get(benchmarkId);
+    const test = benchmark.tests.find(t => t.id === testId);
+    
+    if (!test) {
+      throw new Error(`Unknown test: ${testId} in benchmark ${benchmarkId}`);
+    }
+    
+    this.logSystem.info(`Running benchmark: ${test.name} (${testId})`);
+    
+    // Start the system if not already running
+    if (this.edgeNativeSystem.systemStatus !== 'running') {
+      await this.edgeNativeSystem.start();
+    }
+    
+    // Mark benchmark as active
+    this.activeBenchmarks.set(testId, {
+      id: testId,
+      benchmarkId,
+      startTime: Date.now(),
+      status: 'running'
+    });
+    
+    try {
+      // Warmup iterations
+      this.logSystem.debug(`Performing ${this.config.warmupIterations} warmup iterations`);
+      for (let i = 0; i < this.config.warmupIterations; i++) {
+        await test.run(true); // true indicates warmup
+      }
+      
+      // Actual benchmark iterations
+      const iterationResults = [];
+      
+      for (let i = 0; i < this.config.iterations; i++) {
+        this.logSystem.debug(`Running iteration ${i + 1} of ${this.config.iterations}`);
+        const startTime = Date.now();
+        const result = await test.run(false);
+        const endTime = Date.now();
+        
+        iterationResults.push({
+          iteration: i + 1,
+          duration: endTime - startTime,
+          result
+        });
+      }
+      
+      // Calculate statistics
+      const durations = iterationResults.map(r => r.duration);
+      const stats = this.calculateStatistics(durations);
+      
+      // Update benchmark status
+      const activeBenchmark = this.activeBenchmarks.get(testId);
+      activeBenchmark.status = 'completed';
+      activeBenchmark.endTime = Date.now();
+      activeBenchmark.duration = activeBenchmark.endTime - activeBenchmark.startTime;
+      activeBenchmark.stats = stats;
+      activeBenchmark.iterationResults = iterationResults;
+      
+      // Add to results
+      this.benchmarkResults.push({
+        benchmarkId,
+        testId,
+        name: test.name,
+        startTime: activeBenchmark.startTime,
+        endTime: activeBenchmark.endTime,
+        duration: activeBenchmark.duration,
+        iterations: this.config.iterations,
+        stats,
+        iterationResults
+      });
+      
+      this.logSystem.info(`Benchmark completed: ${test.name} (${testId}) - Avg: ${stats.mean.toFixed(2)}ms, Min: ${stats.min}ms, Max: ${stats.max}ms`);
+      
+      return {
+        testId,
+        status: 'completed',
+        iterations: this.config.iterations,
+        stats,
+        iterationResults
+      };
+    } catch (error) {
+      // Update benchmark status
+      const activeBenchmark = this.activeBenchmarks.get(testId);
+      activeBenchmark.status = 'failed';
+      activeBenchmark.endTime = Date.now();
+      activeBenchmark.duration = activeBenchmark.endTime - activeBenchmark.startTime;
+      activeBenchmark.error = error.message;
+      
+      // Add to results
+      this.benchmarkResults.push({
+        benchmarkId,
+        testId,
+        name: test.name,
+        startTime: activeBenchmark.startTime,
+        endTime: activeBenchmark.endTime,
+        duration: activeBenchmark.duration,
+        status: 'failed',
+        error: error.message
+      });
+      
+      this.logSystem.error(`Benchmark failed: ${test.name} (${testId}) - ${error.message}`);
+      
+      return {
+        testId,
+        status: 'failed',
+        error: error.message
+      };
+    }
+  }
+  
+  async runBenchmarkSuite(benchmarkId) {
+    if (!this.isInitialized) {
+      throw new Error("Benchmark system must be initialized before running benchmark suites");
+    }
+    
+    if (!this.benchmarks.has(benchmarkId)) {
+      throw new Error(`Unknown benchmark suite: ${benchmarkId}`);
+    }
+    
+    const benchmark = this.benchmarks.get(benchmarkId);
+    
+    this.logSystem.info(`Running benchmark suite: ${benchmark.name} (${benchmarkId})`);
+    
+    // Start the system if not already running
+    if (this.edgeNativeSystem.systemStatus !== 'running') {
+      await this.edgeNativeSystem.start();
+    }
+    
+    const results = [];
+    
+    // Run tests sequentially
+    for (const test of benchmark.tests) {
+      try {
+        const result = await this.runBenchmark(benchmarkId, test.id);
+        results.push(result);
+        
+        // Cooldown between benchmarks
+        if (this.config.cooldownBetweenBenchmarks > 0) {
+          this.logSystem.debug(`Cooling down for ${this.config.cooldownBetweenBenchmarks}ms`);
+          await new Promise(resolve => setTimeout(resolve, this.config.cooldownBetweenBenchmarks));
+        }
+      } catch (error) {
+        this.logSystem.error(`Error running benchmark: ${test.id} - ${error.message}`);
+        results.push({
+          testId: test.id,
+          status: 'failed',
+          error: error.message
+        });
+      }
+    }
+    
+    const completedTests = results.filter(r => r.status === 'completed').length;
+    const failedTests = results.filter(r => r.status === 'failed').length;
+    
+    this.logSystem.info(`Benchmark suite completed: ${benchmark.name} (${benchmarkId}) - Completed: ${completedTests}, Failed: ${failedTests}`);
+    
+    return {
+      benchmarkId,
+      name: benchmark.name,
+      totalTests: benchmark.tests.length,
+      completedTests,
+      failedTests,
+      results
+    };
+  }
+  
+  async runAllBenchmarks() {
+    if (!this.isInitialized) {
+      throw new Error("Benchmark system must be initialized before running benchmarks");
+    }
+    
+    this.logSystem.info("Running all configured benchmarks");
+    
+    const results = [];
+    
+    for (const benchmarkId of this.config.benchmarksToRun) {
+      try {
+        const result = await this.runBenchmarkSuite(benchmarkId);
+        results.push(result);
+      } catch (error) {
+        this.logSystem.error(`Error running benchmark suite: ${benchmarkId} - ${error.message}`);
+        results.push({
+          benchmarkId,
+          status: 'failed',
+          error: error.message
+        });
+      }
+    }
+    
+    const totalTests = results.reduce((sum, suite) => sum + suite.totalTests, 0);
+    const completedTests = results.reduce((sum, suite) => sum + (suite.completedTests || 0), 0);
+    const failedTests = results.reduce((sum, suite) => sum + (suite.failedTests || 0), 0);
+    
+    this.logSystem.info(`All benchmarks completed - Total: ${totalTests}, Completed: ${completedTests}, Failed: ${failedTests}`);
+    
+    return {
+      totalSuites: results.length,
+      totalTests,
+      completedTests,
+      failedTests,
+      suiteResults: results
+    };
+  }
+  
+  async shutdown() {
+    this.logSystem.info("Shutting down benchmark system");
+    
+    if (this.edgeNativeSystem) {
+      await this.edgeNativeSystem.shutdown();
+    }
+    
+    this.isInitialized = false;
+    
+    this.logSystem.info("Benchmark system shut down successfully");
+    
+    return true;
+  }
+  
+  getBenchmarkResults() {
+    return {
+      id: this.id,
+      name: this.name,
+      totalBenchmarks: this.benchmarkResults.length,
+      results: this.benchmarkResults
+    };
+  }
+  
+  calculateStatistics(values) {
+    if (!values || values.length === 0) {
+      return {
+        min: 0,
+        max: 0,
+        mean: 0,
+        median: 0,
+        stdDev: 0
+      };
+    }
+    
+    // Sort values for percentile calculations
+    const sortedValues = [...values].sort((a, b) => a - b);
+    
+    // Calculate statistics
+    const min = sortedValues[0];
+    const max = sortedValues[sortedValues.length - 1];
+    const sum = sortedValues.reduce((acc, val) => acc + val, 0);
+    const mean = sum / sortedValues.length;
+    
+    // Calculate median
+    const midIndex = Math.floor(sortedValues.length / 2);
+    const median = sortedValues.length % 2 === 0
+      ? (sortedValues[midIndex - 1] + sortedValues[midIndex]) / 2
+      : sortedValues[midIndex];
+    
+    // Calculate standard deviation
+    const squaredDiffs = sortedValues.map(val => Math.pow(val - mean, 2));
+    const variance = squaredDiffs.reduce((acc, val) => acc + val, 0) / sortedValues.length;
+    const stdDev = Math.sqrt(variance);
+    
+    // Calculate percentiles
+    const p95Index = Math.ceil(sortedValues.length * 0.95) - 1;
+    const p99Index = Math.ceil(sortedValues.length * 0.99) - 1;
+    
+    return {
+      min,
+      max,
+      mean,
+      median,
+      stdDev,
+      p95: sortedValues[p95Index],
+      p99: sortedValues[p99Index]
+    };
+  }
+  
+  // Benchmark implementations
+  
+  // Memory benchmarks
+  
+  async benchmarkMemoryWriteSpeed(isWarmup = false) {
+    const dataSizes = [
+      1024,           // 1 KB
+      1024 * 10,      // 10 KB
+      1024 * 100,     // 100 KB
+      1024 * 1024,    // 1 MB
+      1024 * 1024 * 10 // 10 MB
+    ];
+    
+    const results = {};
+    
+    // Create a memory block
+    const memoryBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024 * 20, {
+      name: 'benchmark-memory-write'
+    });
+    
+    for (const size of dataSizes) {
+      // Create test data of specified size
+      const testData = {
+        benchmark: "Memory write speed",
+        timestamp: Date.now(),
+        data: new Array(size).fill('X').join('')
+      };
+      
+      // Measure write speed
+      const startTime = Date.now();
+      
+      await this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+        memoryBlock.id,
+        testData
+      );
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate throughput in MB/s
+      const throughput = (size / (1024 * 1024)) / (duration / 1000);
+      
+      results[`${size} bytes`] = {
+        size,
+        duration,
+        throughput
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Memory write speed benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  async benchmarkMemoryReadSpeed(isWarmup = false) {
+    const dataSizes = [
+      1024,           // 1 KB
+      1024 * 10,      // 10 KB
+      1024 * 100,     // 100 KB
+      1024 * 1024,    // 1 MB
+      1024 * 1024 * 10 // 10 MB
+    ];
+    
+    const results = {};
+    
+    // Create a memory block
+    const memoryBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024 * 20, {
+      name: 'benchmark-memory-read'
+    });
+    
+    for (const size of dataSizes) {
+      // Create test data of specified size
+      const testData = {
+        benchmark: "Memory read speed",
+        timestamp: Date.now(),
+        data: new Array(size).fill('X').join('')
+      };
+      
+      // Write data to memory block
+      await this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+        memoryBlock.id,
+        testData
+      );
+      
+      // Measure read speed
+      const startTime = Date.now();
+      
+      await this.edgeNativeSystem.universalComputeMemory.readFromMemoryBlock(memoryBlock.id);
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate throughput in MB/s
+      const throughput = (size / (1024 * 1024)) / (duration / 1000);
+      
+      results[`${size} bytes`] = {
+        size,
+        duration,
+        throughput
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Memory read speed benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  async benchmarkMemoryDistributionSpeed(isWarmup = false) {
+    const dataSizes = [
+      1024 * 10,      // 10 KB
+      1024 * 100,     // 100 KB
+      1024 * 1024,    // 1 MB
+    ];
+    
+    const results = {};
+    
+    for (const size of dataSizes) {
+      // Create test data of specified size
+      const testData = {
+        benchmark: "Memory distribution speed",
+        timestamp: Date.now(),
+        data: new Array(size).fill('X').join('')
+      };
+      
+      // Measure distribution speed
+      const startTime = Date.now();
+      
+      // Create a distributed memory block
+      const memoryBlock = await this.edgeNativeSystem.createMemoryBlock(size * 2, {
+        name: `benchmark-memory-distribution-${size}`,
+        distributed: true,
+        distributionOptions: {
+          strategy: 'balanced',
+          priority: 'high'
+        }
+      });
+      
+      // Write data to the memory block
+      await this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+        memoryBlock.id,
+        testData
+      );
+      
+      // Wait for distribution to complete
+      await this.edgeNativeSystem.realTimeMemoryDistribution.waitForDistribution(memoryBlock.id);
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate throughput in MB/s
+      const throughput = (size / (1024 * 1024)) / (duration / 1000);
+      
+      results[`${size} bytes`] = {
+        size,
+        duration,
+        throughput
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Memory distribution speed benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  // Compute benchmarks
+  
+  async benchmarkComputeAllocationSpeed(isWarmup = false) {
+    const computeSizes = [
+      { cpu: 1, memory: 1024 * 1024 * 10 },       // 1 CPU, 10 MB
+      { cpu: 2, memory: 1024 * 1024 * 100 },      // 2 CPU, 100 MB
+      { cpu: 4, memory: 1024 * 1024 * 500 }       // 4 CPU, 500 MB
+    ];
+    
+    const results = {};
+    
+    for (const size of computeSizes) {
+      // Measure allocation speed
+      const startTime = Date.now();
+      
+      // Allocate compute
+      const compute = await this.edgeNativeSystem.allocateCompute({
+        cpu: size.cpu,
+        memory: size.memory,
+        priority: 'normal'
+      }, {
+        name: `benchmark-compute-allocation-${size.cpu}-${size.memory}`
+      });
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      results[`${size.cpu} CPU, ${size.memory / (1024 * 1024)} MB`] = {
+        size,
+        duration,
+        computeId: compute.computeId
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Compute allocation speed benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  async benchmarkComputeExecutionSpeed(isWarmup = false) {
+    const workloads = [
+      { name: 'light', iterations: 10000 },
+      { name: 'medium', iterations: 100000 },
+      { name: 'heavy', iterations: 1000000 }
+    ];
+    
+    const results = {};
+    
+    // Allocate compute
+    const compute = await this.edgeNativeSystem.allocateCompute({
+      cpu: 2,
+      memory: 1024 * 1024 * 100,
+      priority: 'high'
+    }, {
+      name: 'benchmark-compute-execution'
+    });
+    
+    for (const workload of workloads) {
+      // Define a compute function with the specified workload
+      const testFunction = `
+        function compute(input) {
+          const iterations = ${workload.iterations};
+          let result = 0;
+          
+          for (let i = 0; i < iterations; i++) {
+            result += Math.sqrt(i);
+          }
+          
+          return {
+            workload: "${workload.name}",
+            iterations: iterations,
+            result: result,
+            timestamp: Date.now()
+          };
+        }
+      `;
+      
+      // Load the function
+      await this.edgeNativeSystem.universalComputeMemory.loadComputeFunction(
+        compute.computeId,
+        testFunction
+      );
+      
+      // Measure execution speed
+      const startTime = Date.now();
+      
+      // Execute the function
+      const executionResult = await this.edgeNativeSystem.executeCompute(
+        compute.computeId,
+        {}
+      );
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      results[workload.name] = {
+        workload,
+        duration,
+        executionResult
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Compute execution speed benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  async benchmarkComputeParallelExecution(isWarmup = false) {
+    const parallelCounts = [2, 4, 8];
+    const results = {};
+    
+    for (const count of parallelCounts) {
+      // Create compute instances
+      const computeInstances = [];
+      
+      for (let i = 0; i < count; i++) {
+        const compute = await this.edgeNativeSystem.allocateCompute({
+          cpu: 1,
+          memory: 1024 * 1024 * 50,
+          priority: 'normal'
+        }, {
+          name: `benchmark-compute-parallel-${i}`
+        });
+        
+        // Load a compute function
+        await this.edgeNativeSystem.universalComputeMemory.loadComputeFunction(
+          compute.computeId,
+          `
+            function compute(input) {
+              const iterations = 100000;
+              let result = 0;
+              
+              for (let i = 0; i < iterations; i++) {
+                result += Math.sqrt(i);
+              }
+              
+              return {
+                instanceId: ${i},
+                iterations: iterations,
+                result: result,
+                timestamp: Date.now()
+              };
+            }
+          `
+        );
+        
+        computeInstances.push(compute);
+      }
+      
+      // Measure parallel execution speed
+      const startTime = Date.now();
+      
+      // Execute all functions in parallel
+      const executionPromises = computeInstances.map(compute => 
+        this.edgeNativeSystem.executeCompute(compute.computeId, {})
+      );
+      
+      const executionResults = await Promise.all(executionPromises);
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate operations per second
+      const opsPerSecond = count / (duration / 1000);
+      
+      results[`${count} parallel`] = {
+        parallelCount: count,
+        duration,
+        opsPerSecond,
+        executionResults
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Compute parallel execution benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  // Network benchmarks
+  
+  async benchmarkNetworkChannelCreationSpeed(isWarmup = false) {
+    const channelCounts = [1, 5, 10];
+    const results = {};
+    
+    for (const count of channelCounts) {
+      // Create source and target blocks
+      const sourceBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024 * 10, {
+        name: `benchmark-channel-source-${count}`
+      });
+      
+      const targetBlocks = [];
+      
+      for (let i = 0; i < count; i++) {
+        const targetBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024 * 10, {
+          name: `benchmark-channel-target-${count}-${i}`
+        });
+        
+        targetBlocks.push(targetBlock);
+      }
+      
+      // Measure channel creation speed
+      const startTime = Date.now();
+      
+      // Create channels
+      const channelPromises = targetBlocks.map(targetBlock => 
+        this.edgeNativeSystem.createDataChannel(
+          sourceBlock.id,
+          targetBlock.id,
+          {
+            name: `benchmark-channel-${count}`,
+            bandwidth: 'high',
+            priority: 'normal'
+          }
+        )
+      );
+      
+      const channels = await Promise.all(channelPromises);
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate channels per second
+      const channelsPerSecond = count / (duration / 1000);
+      
+      results[`${count} channels`] = {
+        channelCount: count,
+        duration,
+        channelsPerSecond,
+        channels: channels.map(channel => channel.channelId)
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Network channel creation speed benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  async benchmarkNetworkDataTransferSpeed(isWarmup = false) {
+    const dataSizes = [
+      1024 * 10,      // 10 KB
+      1024 * 100,     // 100 KB
+      1024 * 1024,    // 1 MB
+      1024 * 1024 * 10 // 10 MB
+    ];
+    
+    const results = {};
+    
+    // Create source and target blocks
+    const sourceBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024 * 20, {
+      name: 'benchmark-data-transfer-source'
+    });
+    
+    const targetBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024 * 20, {
+      name: 'benchmark-data-transfer-target'
+    });
+    
+    // Create a data channel
+    const channel = await this.edgeNativeSystem.createDataChannel(
+      sourceBlock.id,
+      targetBlock.id,
+      {
+        name: 'benchmark-data-transfer-channel',
+        bandwidth: 'high',
+        priority: 'high'
+      }
+    );
+    
+    for (const size of dataSizes) {
+      // Create test data of specified size
+      const testData = {
+        benchmark: "Network data transfer speed",
+        timestamp: Date.now(),
+        data: new Array(size).fill('X').join('')
+      };
+      
+      // Write data to source block
+      await this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+        sourceBlock.id,
+        testData
+      );
+      
+      // Measure transfer speed
+      const startTime = Date.now();
+      
+      // Send data through the channel
+      await this.edgeNativeSystem.sendData(
+        channel.channelId,
+        { command: "COPY_DATA", sourceId: sourceBlock.id }
+      );
+      
+      // Wait for data transfer to complete
+      await this.edgeNativeSystem.waitForDataTransfer(channel.channelId);
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate throughput in MB/s
+      const throughput = (size / (1024 * 1024)) / (duration / 1000);
+      
+      results[`${size} bytes`] = {
+        size,
+        duration,
+        throughput
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Network data transfer speed benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  async benchmarkQuantumHighwaySpeed(isWarmup = false) {
+    // Skip if quantum is not enabled
+    if (!this.edgeNativeSystem.config.quantumEnabled) {
+      return {
+        skipped: true,
+        reason: "Quantum processing is not enabled"
+      };
+    }
+    
+    const dataSizes = [
+      1024 * 10,      // 10 KB
+      1024 * 100,     // 100 KB
+      1024 * 1024     // 1 MB
+    ];
+    
+    const results = {};
+    
+    // Create source and target endpoints
+    const sourceEndpoint = await this.edgeNativeSystem.quantumDataHighway.createEndpoint({
+      name: 'benchmark-quantum-source'
+    });
+    
+    const targetEndpoint = await this.edgeNativeSystem.quantumDataHighway.createEndpoint({
+      name: 'benchmark-quantum-target'
+    });
+    
+    // Create a quantum channel
+    const channel = await this.edgeNativeSystem.quantumDataHighway.createChannel(
+      sourceEndpoint.id,
+      targetEndpoint.id,
+      {
+        name: 'benchmark-quantum-channel',
+        quantum: true
+      }
+    );
+    
+    for (const size of dataSizes) {
+      // Create test data of specified size
+      const testData = {
+        benchmark: "Quantum highway speed",
+        timestamp: Date.now(),
+        data: new Array(size).fill('X').join('')
+      };
+      
+      // Measure transfer speed
+      const startTime = Date.now();
+      
+      // Send data through the quantum channel
+      await this.edgeNativeSystem.quantumDataHighway.sendData(
+        channel.channelId,
+        testData
+      );
+      
+      // Wait for data transfer to complete
+      await this.edgeNativeSystem.quantumDataHighway.waitForTransfer(channel.channelId);
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate throughput in MB/s
+      const throughput = (size / (1024 * 1024)) / (duration / 1000);
+      
+      results[`${size} bytes`] = {
+        size,
+        duration,
+        throughput
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Quantum highway speed benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  // Throughput benchmarks
+  
+  async benchmarkMemoryOperationsThroughput(isWarmup = false) {
+    const operationCounts = [10, 50, 100];
+    const results = {};
+    
+    for (const count of operationCounts) {
+      // Create memory blocks
+      const memoryBlocks = [];
+      
+      for (let i = 0; i < count; i++) {
+        const memoryBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024, {
+          name: `benchmark-memory-throughput-${count}-${i}`
+        });
+        
+        memoryBlocks.push(memoryBlock);
+      }
+      
+      // Prepare operations
+      const operations = [];
+      
+      for (let i = 0; i < count; i++) {
+        operations.push({
+          type: 'write',
+          blockId: memoryBlocks[i].id,
+          data: { test: `Memory throughput test ${i}`, timestamp: Date.now() }
+        });
+      }
+      
+      // Measure throughput
+      const startTime = Date.now();
+      
+      // Execute operations
+      const operationPromises = operations.map(op => 
+        this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+          op.blockId,
+          op.data
+        )
+      );
+      
+      await Promise.all(operationPromises);
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate operations per second
+      const opsPerSecond = count / (duration / 1000);
+      
+      results[`${count} operations`] = {
+        operationCount: count,
+        duration,
+        opsPerSecond
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Memory operations throughput benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  async benchmarkComputeOperationsThroughput(isWarmup = false) {
+    const operationCounts = [5, 10, 20];
+    const results = {};
+    
+    for (const count of operationCounts) {
+      // Allocate compute instances
+      const computeInstances = [];
+      
+      for (let i = 0; i < count; i++) {
+        const compute = await this.edgeNativeSystem.allocateCompute({
+          cpu: 1,
+          memory: 1024 * 1024 * 10,
+          priority: 'normal'
+        }, {
+          name: `benchmark-compute-throughput-${count}-${i}`
+        });
+        
+        // Load a simple compute function
+        await this.edgeNativeSystem.universalComputeMemory.loadComputeFunction(
+          compute.computeId,
+          `
+            function compute(input) {
+              return {
+                instanceId: ${i},
+                timestamp: Date.now()
+              };
+            }
+          `
+        );
+        
+        computeInstances.push(compute);
+      }
+      
+      // Measure throughput
+      const startTime = Date.now();
+      
+      // Execute compute operations
+      const operationPromises = computeInstances.map(compute => 
+        this.edgeNativeSystem.executeCompute(compute.computeId, {})
+      );
+      
+      await Promise.all(operationPromises);
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate operations per second
+      const opsPerSecond = count / (duration / 1000);
+      
+      results[`${count} operations`] = {
+        operationCount: count,
+        duration,
+        opsPerSecond
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Compute operations throughput benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  async benchmarkNetworkOperationsThroughput(isWarmup = false) {
+    const operationCounts = [5, 10, 20];
+    const results = {};
+    
+    for (const count of operationCounts) {
+      // Create source and target blocks
+      const sourceBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024 * 10, {
+        name: `benchmark-network-throughput-source-${count}`
+      });
+      
+      const targetBlocks = [];
+      const channels = [];
+      
+      for (let i = 0; i < count; i++) {
+        const targetBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024 * 10, {
+          name: `benchmark-network-throughput-target-${count}-${i}`
+        });
+        
+        targetBlocks.push(targetBlock);
+        
+        // Create a data channel
+        const channel = await this.edgeNativeSystem.createDataChannel(
+          sourceBlock.id,
+          targetBlock.id,
+          {
+            name: `benchmark-network-throughput-channel-${count}-${i}`,
+            bandwidth: 'high',
+            priority: 'normal'
+          }
+        );
+        
+        channels.push(channel);
+      }
+      
+      // Write test data to source block
+      await this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+        sourceBlock.id,
+        { test: "Network throughput test", timestamp: Date.now() }
+      );
+      
+      // Measure throughput
+      const startTime = Date.now();
+      
+      // Send data through all channels
+      const operationPromises = channels.map(channel => 
+        this.edgeNativeSystem.sendData(
+          channel.channelId,
+          { command: "COPY_DATA", sourceId: sourceBlock.id }
+        )
+      );
+      
+      await Promise.all(operationPromises);
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate operations per second
+      const opsPerSecond = count / (duration / 1000);
+      
+      results[`${count} operations`] = {
+        operationCount: count,
+        duration,
+        opsPerSecond
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Network operations throughput benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  // Latency benchmarks
+  
+  async benchmarkMemoryAccessLatency(isWarmup = false) {
+    const iterationCount = isWarmup ? 10 : 100;
+    const results = {
+      read: [],
+      write: []
+    };
+    
+    // Create a memory block
+    const memoryBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024, {
+      name: 'benchmark-memory-latency'
+    });
+    
+    // Write initial data
+    await this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+      memoryBlock.id,
+      { initial: "Memory latency test", timestamp: Date.now() }
+    );
+    
+    // Measure read latency
+    for (let i = 0; i < iterationCount; i++) {
+      const startTime = Date.now();
+      
+      await this.edgeNativeSystem.universalComputeMemory.readFromMemoryBlock(memoryBlock.id);
+      
+      const endTime = Date.now();
+      results.read.push(endTime - startTime);
+    }
+    
+    // Measure write latency
+    for (let i = 0; i < iterationCount; i++) {
+      const startTime = Date.now();
+      
+      await this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+        memoryBlock.id,
+        { iteration: i, timestamp: Date.now() }
+      );
+      
+      const endTime = Date.now();
+      results.write.push(endTime - startTime);
+    }
+    
+    // Calculate statistics
+    const readStats = this.calculateStatistics(results.read);
+    const writeStats = this.calculateStatistics(results.write);
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Memory access latency benchmark completed - Read: ${readStats.mean.toFixed(2)}ms, Write: ${writeStats.mean.toFixed(2)}ms`);
+    }
+    
+    return {
+      read: readStats,
+      write: writeStats,
+      rawData: results
+    };
+  }
+  
+  async benchmarkComputeInvocationLatency(isWarmup = false) {
+    const iterationCount = isWarmup ? 10 : 100;
+    const results = [];
+    
+    // Allocate compute
+    const compute = await this.edgeNativeSystem.allocateCompute({
+      cpu: 1,
+      memory: 1024 * 1024 * 10,
+      priority: 'high'
+    }, {
+      name: 'benchmark-compute-latency'
+    });
+    
+    // Load a simple compute function
+    await this.edgeNativeSystem.universalComputeMemory.loadComputeFunction(
+      compute.computeId,
+      `
+        function compute(input) {
+          return {
+            timestamp: Date.now()
+          };
+        }
+      `
+    );
+    
+    // Measure invocation latency
+    for (let i = 0; i < iterationCount; i++) {
+      const startTime = Date.now();
+      
+      await this.edgeNativeSystem.executeCompute(compute.computeId, {});
+      
+      const endTime = Date.now();
+      results.push(endTime - startTime);
+    }
+    
+    // Calculate statistics
+    const stats = this.calculateStatistics(results);
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Compute invocation latency benchmark completed - Avg: ${stats.mean.toFixed(2)}ms`);
+    }
+    
+    return {
+      stats,
+      rawData: results
+    };
+  }
+  
+  async benchmarkNetworkRoundTripLatency(isWarmup = false) {
+    const iterationCount = isWarmup ? 10 : 100;
+    const results = [];
+    
+    // Create source and target blocks
+    const sourceBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024, {
+      name: 'benchmark-network-latency-source'
+    });
+    
+    const targetBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024, {
+      name: 'benchmark-network-latency-target'
+    });
+    
+    // Create a data channel
+    const channel = await this.edgeNativeSystem.createDataChannel(
+      sourceBlock.id,
+      targetBlock.id,
+      {
+        name: 'benchmark-network-latency-channel',
+        bandwidth: 'high',
+        priority: 'high'
+      }
+    );
+    
+    // Measure round-trip latency
+    for (let i = 0; i < iterationCount; i++) {
+      // Write test data to source block
+      await this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+        sourceBlock.id,
+        { iteration: i, timestamp: Date.now() }
+      );
+      
+      const startTime = Date.now();
+      
+      // Send data through the channel
+      await this.edgeNativeSystem.sendData(
+        channel.channelId,
+        { command: "COPY_DATA", sourceId: sourceBlock.id }
+      );
+      
+      // Wait for data transfer to complete
+      await this.edgeNativeSystem.waitForDataTransfer(channel.channelId);
+      
+      // Read data from target block
+      await this.edgeNativeSystem.universalComputeMemory.readFromMemoryBlock(targetBlock.id);
+      
+      const endTime = Date.now();
+      results.push(endTime - startTime);
+    }
+    
+    // Calculate statistics
+    const stats = this.calculateStatistics(results);
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Network round-trip latency benchmark completed - Avg: ${stats.mean.toFixed(2)}ms`);
+    }
+    
+    return {
+      stats,
+      rawData: results
+    };
+  }
+  
+  // Scalability benchmarks
+  
+  async benchmarkMemoryBlocksScalability(isWarmup = false) {
+    const blockCounts = isWarmup ? [10] : [10, 50, 100, 500];
+    const results = {};
+    
+    for (const count of blockCounts) {
+      // Measure creation time
+      const startTime = Date.now();
+      
+      // Create memory blocks
+      const memoryBlocks = [];
+      
+      for (let i = 0; i < count; i++) {
+        const memoryBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024, {
+          name: `benchmark-memory-scalability-${count}-${i}`
+        });
+        
+        memoryBlocks.push(memoryBlock);
+      }
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Get memory metrics
+      const memoryMetrics = await this.edgeNativeSystem.universalComputeMemory.getMetrics();
+      
+      results[`${count} blocks`] = {
+        blockCount: count,
+        duration,
+        blocksPerSecond: count / (duration / 1000),
+        memoryMetrics
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Memory blocks scalability benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  async benchmarkComputeInstancesScalability(isWarmup = false) {
+    const instanceCounts = isWarmup ? [5] : [5, 10, 20, 50];
+    const results = {};
+    
+    for (const count of instanceCounts) {
+      // Measure allocation time
+      const startTime = Date.now();
+      
+      // Allocate compute instances
+      const computeInstances = [];
+      
+      for (let i = 0; i < count; i++) {
+        const compute = await this.edgeNativeSystem.allocateCompute({
+          cpu: 1,
+          memory: 1024 * 1024 * 10,
+          priority: 'normal'
+        }, {
+          name: `benchmark-compute-scalability-${count}-${i}`
+        });
+        
+        computeInstances.push(compute);
+      }
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Get compute metrics
+      const computeMetrics = await this.edgeNativeSystem.universalComputeMemory.getMetrics();
+      
+      results[`${count} instances`] = {
+        instanceCount: count,
+        duration,
+        instancesPerSecond: count / (duration / 1000),
+        computeMetrics
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Compute instances scalability benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  async benchmarkConcurrentChannelsScalability(isWarmup = false) {
+    const channelCounts = isWarmup ? [5] : [5, 10, 20, 50];
+    const results = {};
+    
+    for (const count of channelCounts) {
+      // Create source block
+      const sourceBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024 * 10, {
+        name: `benchmark-channel-scalability-source-${count}`
+      });
+      
+      // Write test data to source block
+      await this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+        sourceBlock.id,
+        { test: "Channel scalability test", timestamp: Date.now() }
+      );
+      
+      // Measure channel creation and data transfer time
+      const startTime = Date.now();
+      
+      // Create target blocks and channels, and send data
+      const operations = [];
+      
+      for (let i = 0; i < count; i++) {
+        operations.push((async () => {
+          // Create target block
+          const targetBlock = await this.edgeNativeSystem.createMemoryBlock(1024 * 1024 * 10, {
+            name: `benchmark-channel-scalability-target-${count}-${i}`
+          });
+          
+          // Create channel
+          const channel = await this.edgeNativeSystem.createDataChannel(
+            sourceBlock.id,
+            targetBlock.id,
+            {
+              name: `benchmark-channel-scalability-${count}-${i}`,
+              bandwidth: 'high',
+              priority: 'normal'
+            }
+          );
+          
+          // Send data
+          await this.edgeNativeSystem.sendData(
+            channel.channelId,
+            { command: "COPY_DATA", sourceId: sourceBlock.id }
+          );
+          
+          return channel;
+        })());
+      }
+      
+      const channels = await Promise.all(operations);
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Get network metrics
+      const networkMetrics = await this.edgeNativeSystem.myceliumNetwork.getMetrics();
+      
+      results[`${count} channels`] = {
+        channelCount: count,
+        duration,
+        channelsPerSecond: count / (duration / 1000),
+        networkMetrics
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Concurrent channels scalability benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  // Security benchmarks
+  
+  async benchmarkSecurityContextCreationSpeed(isWarmup = false) {
+    const contextCounts = isWarmup ? [5] : [5, 10, 20];
+    const results = {};
+    
+    for (const count of contextCounts) {
+      // Measure context creation speed
+      const startTime = Date.now();
+      
+      // Create security contexts
+      const contexts = [];
+      
+      for (let i = 0; i < count; i++) {
+        const context = await this.edgeNativeSystem.rainbowShield.createSecurityContext(
+          `benchmark-context-${count}-${i}`,
+          {
+            accessLevel: 'restricted',
+            encryptionStrength: 'high',
+            auditFrequency: 'continuous'
+          }
+        );
+        
+        contexts.push(context);
+      }
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      // Calculate contexts per second
+      const contextsPerSecond = count / (duration / 1000);
+      
+      results[`${count} contexts`] = {
+        contextCount: count,
+        duration,
+        contextsPerSecond
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Security context creation speed benchmark completed`);
+    }
+    
+    return results;
+  }
+  
+  async benchmarkAuthenticationSpeed(isWarmup = false) {
+    const iterationCount = isWarmup ? 10 : 100;
+    const results = [];
+    
+    // Create a security context
+    const securityContext = await this.edgeNativeSystem.rainbowShield.createSecurityContext(
+      'benchmark-auth-context',
+      {
+        accessLevel: 'restricted',
+        encryptionStrength: 'high',
+        auditFrequency: 'continuous'
+      }
+    );
+    
+    // Measure authentication speed
+    for (let i = 0; i < iterationCount; i++) {
+      const startTime = Date.now();
+      
+      // Authorize access
+      const authResult = await this.edgeNativeSystem.rainbowShield.authorizeAccess(
+        'benchmark-auth-context',
+        { username: `test-user-${i}`, password: `test-password-${i}` }
+      );
+      
+      const endTime = Date.now();
+      results.push(endTime - startTime);
+      
+      // Revoke the token to clean up
+      if (authResult.authorized) {
+        await this.edgeNativeSystem.rainbowShield.revokeToken(
+          authResult.token.id,
+          'benchmark-auth-context'
+        );
+      }
+    }
+    
+    // Calculate statistics
+    const stats = this.calculateStatistics(results);
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Authentication speed benchmark completed - Avg: ${stats.mean.toFixed(2)}ms`);
+    }
+    
+    return {
+      stats,
+      rawData: results
+    };
+  }
+  
+  async benchmarkDataProtectionOverhead(isWarmup = false) {
+    const dataSizes = [
+      1024,           // 1 KB
+      1024 * 10,      // 10 KB
+      1024 * 100,     // 100 KB
+      1024 * 1024     // 1 MB
+    ];
+    
+    const results = {};
+    
+    for (const size of dataSizes) {
+      // Create test data of specified size
+      const testData = {
+        benchmark: "Data protection overhead",
+        timestamp: Date.now(),
+        data: new Array(size).fill('X').join('')
+      };
+      
+      // Measure unprotected operation time
+      const startUnprotected = Date.now();
+      
+      // Create a memory block
+      const memoryBlock = await this.edgeNativeSystem.createMemoryBlock(size * 2, {
+        name: `benchmark-protection-${size}`
+      });
+      
+      // Write data to the memory block
+      await this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+        memoryBlock.id,
+        testData
+      );
+      
+      const endUnprotected = Date.now();
+      const durationUnprotected = endUnprotected - startUnprotected;
+      
+      // Measure protected operation time
+      const startProtected = Date.now();
+      
+      // Process data through security shield
+      const securityProcessingResult = await this.edgeNativeSystem.rainbowShield.processDataThroughShield(
+        testData,
+        'system'
+      );
+      
+      // Create a memory block with security
+      const secureMemoryBlock = await this.edgeNativeSystem.createMemoryBlock(size * 2, {
+        name: `benchmark-protection-secure-${size}`,
+        securityLevel: 'high'
+      });
+      
+      // Write processed data to the memory block
+      await this.edgeNativeSystem.universalComputeMemory.writeToMemoryBlock(
+        secureMemoryBlock.id,
+        securityProcessingResult.data
+      );
+      
+      const endProtected = Date.now();
+      const durationProtected = endProtected - startProtected;
+      
+      // Calculate overhead
+      const overhead = durationProtected - durationUnprotected;
+      const overheadPercentage = (overhead / durationUnprotected) * 100;
+      
+      results[`${size} bytes`] = {
+        size,
+        durationUnprotected,
+        durationProtected,
+        overhead,
+        overheadPercentage
+      };
+    }
+    
+    if (!isWarmup) {
+      this.logSystem.info(`Data protection overhead benchmark completed`);
+    }
+    
+    return results;
+  }
+}
+
+// Helper class for logging (same as in EdgeNativeUniversalSystem)
+class LogSystem {
+  constructor(level = 'info') {
+    this.level = level;
+    this.levels = {
+      debug: 0,
+      info: 1,
+      warn: 2,
+      error: 3
+    };
+  }
+  
+  shouldLog(level) {
+    return this.levels[level] >= this.levels[this.level];
+  }
+  
+  debug(message) {
+    if (this.shouldLog('debug')) {
+      console.log(`[DEBUG] ${message}`);
+    }
+  }
+  
+  info(message) {
+    if (this.shouldLog('info')) {
+      console.log(`[INFO] ${message}`);
+    }
+  }
+  
+  warn(message) {
+    if (this.shouldLog('warn')) {
+      console.warn(`[WARN] ${message}`);
+    }
+  }
+  
+  error(message) {
+    if (this.shouldLog('error')) {
+      console.error(`[ERROR] ${message}`);
+    }
+  }
+}
+
+module.exports = PerformanceBenchmark;

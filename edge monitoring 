@@ -1,0 +1,1975 @@
+Thought for 1 secondLet's continue with providing more files for the EdgeNativeUMaaS system. Based on the conversation history, I'll create the system-monitor.js file next, which would be a logical component to monitor the system's health, performance, and status.
+
+Here's the system monitor file for the EdgeNativeUMaaS system:
+
+```javascript
+/**
+ * EdgeNativeUMaaS System Monitor
+ * 
+ * This file provides comprehensive monitoring capabilities for the EdgeNativeUMaaS system.
+ * It tracks system health, component status, performance metrics, resource utilization,
+ * and provides alerting and reporting functionality.
+ */
+
+class SystemMonitor {
+  constructor(config = {}) {
+    this.id = config.id || `monitor-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    this.name = config.name || "EdgeNativeUMaaS System Monitor";
+    this.description = config.description || "Comprehensive system monitoring and alerting";
+    
+    // System reference
+    this.edgeNativeSystem = null;
+    
+    // Monitor state
+    this.isInitialized = false;
+    this.isRunning = false;
+    this.startTime = null;
+    
+    // Monitoring intervals
+    this.healthCheckInterval = null;
+    this.metricsCollectionInterval = null;
+    this.alertCheckInterval = null;
+    
+    // Storage for monitoring data
+    this.systemHealth = {
+      status: 'unknown',
+      lastCheck: null,
+      components: new Map()
+    };
+    
+    this.metrics = {
+      system: new MetricsStore('system'),
+      components: new Map(),
+      resources: new ResourceMetricsStore()
+    };
+    
+    this.alerts = {
+      active: new Map(),
+      history: [],
+      rules: new Map()
+    };
+    
+    this.logs = {
+      system: [],
+      components: new Map(),
+      maxLogEntries: config.maxLogEntries || 10000
+    };
+    
+    // Configuration
+    this.config = {
+      // General settings
+      autoStart: config.autoStart !== false,
+      logLevel: config.logLevel || 'info',
+      
+      // Monitoring intervals (in milliseconds)
+      healthCheckInterval: config.healthCheckInterval || 30000, // 30 seconds
+      metricsCollectionInterval: config.metricsCollectionInterval || 10000, // 10 seconds
+      alertCheckInterval: config.alertCheckInterval || 15000, // 15 seconds
+      
+      // Retention periods
+      metricsRetention: config.metricsRetention || {
+        highResolution: 24 * 60 * 60 * 1000, // 1 day
+        mediumResolution: 7 * 24 * 60 * 60 * 1000, // 7 days
+        lowResolution: 30 * 24 * 60 * 60 * 1000 // 30 days
+      },
+      
+      // Alert settings
+      alertThresholds: config.alertThresholds || {
+        cpuUsage: 0.8, // 80%
+        memoryUsage: 0.8, // 80%
+        diskUsage: 0.9, // 90%
+        errorRate: 0.05, // 5%
+        responseTime: 1000 // 1 second
+      },
+      
+      // Notification settings
+      notifications: config.notifications || {
+        enabled: true,
+        channels: ['console', 'log']
+      },
+      
+      ...config.monitorConfig
+    };
+    
+    // Logging
+    this.logSystem = new LogSystem(this.config.logLevel);
+    
+    // Dashboard
+    this.dashboard = new MonitoringDashboard(this);
+    
+    // Notification system
+    this.notificationSystem = new NotificationSystem(this.config.notifications);
+  }
+  
+  async initialize(edgeNativeSystem) {
+    this.logSystem.info(`Initializing ${this.name}`);
+    
+    try {
+      // Store reference to the edge native system
+      if (edgeNativeSystem) {
+        this.edgeNativeSystem = edgeNativeSystem;
+      } else {
+        throw new Error("EdgeNativeUniversalSystem reference is required for monitor initialization");
+      }
+      
+      // Initialize metrics stores
+      await this.initializeMetricsStores();
+      
+      // Initialize alert rules
+      await this.initializeAlertRules();
+      
+      // Initialize notification system
+      await this.notificationSystem.initialize();
+      
+      // Initialize dashboard
+      await this.dashboard.initialize();
+      
+      this.isInitialized = true;
+      this.logSystem.info(`${this.name} initialized successfully`);
+      
+      // Auto-start monitoring if configured
+      if (this.config.autoStart) {
+        await this.startMonitoring();
+      }
+      
+      return true;
+    } catch (error) {
+      this.logSystem.error(`Monitor initialization failed: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async initializeMetricsStores() {
+    this.logSystem.debug("Initializing metrics stores");
+    
+    // Initialize system metrics
+    this.metrics.system.addMetric('cpuUsage', 'gauge');
+    this.metrics.system.addMetric('memoryUsage', 'gauge');
+    this.metrics.system.addMetric('uptime', 'gauge');
+    this.metrics.system.addMetric('activeComponents', 'gauge');
+    this.metrics.system.addMetric('errorCount', 'counter');
+    this.metrics.system.addMetric('requestCount', 'counter');
+    this.metrics.system.addMetric('responseTime', 'histogram');
+    
+    // Initialize resource metrics
+    this.metrics.resources.initialize();
+    
+    // Initialize component metrics stores
+    const components = this.edgeNativeSystem.getComponents();
+    
+    for (const [componentId, component] of components) {
+      await this.initializeComponentMetrics(componentId, component);
+    }
+    
+    return true;
+  }
+  
+  async initializeComponentMetrics(componentId, component) {
+    this.logSystem.debug(`Initializing metrics for component: ${componentId}`);
+    
+    // Create metrics store for component
+    const metricsStore = new MetricsStore(componentId);
+    
+    // Add standard metrics
+    metricsStore.addMetric('status', 'gauge'); // 0 = inactive, 1 = active
+    metricsStore.addMetric('uptime', 'gauge');
+    metricsStore.addMetric('errorCount', 'counter');
+    metricsStore.addMetric('operationCount', 'counter');
+    
+    // Add component-specific metrics
+    if (component.type === 'dataHighway') {
+      metricsStore.addMetric('activeFlows', 'gauge');
+      metricsStore.addMetric('dataProcessed', 'counter');
+      metricsStore.addMetric('processingTime', 'histogram');
+    } else if (component.type === 'memorySystem') {
+      metricsStore.addMetric('allocatedMemory', 'gauge');
+      metricsStore.addMetric('memoryOperations', 'counter');
+      metricsStore.addMetric('persistentStoreSize', 'gauge');
+    } else if (component.type === 'securitySystem') {
+      metricsStore.addMetric('activeTokens', 'gauge');
+      metricsStore.addMetric('authenticationCount', 'counter');
+      metricsStore.addMetric('authenticationFailures', 'counter');
+      metricsStore.addMetric('securityIncidents', 'counter');
+    }
+    
+    // Store metrics store
+    this.metrics.components.set(componentId, metricsStore);
+    
+    // Initialize log storage for component
+    this.logs.components.set(componentId, []);
+    
+    // Initialize health status for component
+    this.systemHealth.components.set(componentId, {
+      status: 'unknown',
+      lastCheck: null,
+      details: {}
+    });
+    
+    return metricsStore;
+  }
+  
+  async initializeAlertRules() {
+    this.logSystem.debug("Initializing alert rules");
+    
+    // System-level alert rules
+    this.addAlertRule({
+      id: 'high-cpu-usage',
+      name: 'High CPU Usage',
+      description: 'CPU usage exceeds threshold',
+      severity: 'warning',
+      condition: (metrics) => metrics.system.getMetric('cpuUsage').latest() > this.config.alertThresholds.cpuUsage,
+      actions: ['notify']
+    });
+    
+    this.addAlertRule({
+      id: 'high-memory-usage',
+      name: 'High Memory Usage',
+      description: 'Memory usage exceeds threshold',
+      severity: 'warning',
+      condition: (metrics) => metrics.system.getMetric('memoryUsage').latest() > this.config.alertThresholds.memoryUsage,
+      actions: ['notify']
+    });
+    
+    this.addAlertRule({
+      id: 'high-error-rate',
+      name: 'High Error Rate',
+      description: 'Error rate exceeds threshold',
+      severity: 'critical',
+      condition: (metrics) => {
+        const errorCount = metrics.system.getMetric('errorCount').delta(60000); // last minute
+        const requestCount = metrics.system.getMetric('requestCount').delta(60000); // last minute
+        return requestCount > 0 && (errorCount / requestCount) > this.config.alertThresholds.errorRate;
+      },
+      actions: ['notify']
+    });
+    
+    this.addAlertRule({
+      id: 'slow-response-time',
+      name: 'Slow Response Time',
+      description: 'Response time exceeds threshold',
+      severity: 'warning',
+      condition: (metrics) => metrics.system.getMetric('responseTime').percentile(95) > this.config.alertThresholds.responseTime,
+      actions: ['notify']
+    });
+    
+    this.addAlertRule({
+      id: 'component-inactive',
+      name: 'Component Inactive',
+      description: 'A critical component is inactive',
+      severity: 'critical',
+      condition: (metrics) => {
+        for (const [componentId, componentHealth] of this.systemHealth.components.entries()) {
+          const component = this.edgeNativeSystem.getComponent(componentId);
+          if (component && component.critical && componentHealth.status !== 'healthy') {
+            return true;
+          }
+        }
+        return false;
+      },
+      actions: ['notify']
+    });
+    
+    return true;
+  }
+  
+  addAlertRule(rule) {
+    if (!rule.id || !rule.condition) {
+      throw new Error("Alert rule must have an id and condition");
+    }
+    
+    this.alerts.rules.set(rule.id, rule);
+    this.logSystem.debug(`Added alert rule: ${rule.name}`);
+    
+    return rule;
+  }
+  
+  removeAlertRule(ruleId) {
+    if (!this.alerts.rules.has(ruleId)) {
+      return false;
+    }
+    
+    this.alerts.rules.delete(ruleId);
+    this.logSystem.debug(`Removed alert rule: ${ruleId}`);
+    
+    return true;
+  }
+  
+  async startMonitoring() {
+    if (!this.isInitialized) {
+      throw new Error("System monitor must be initialized before starting");
+    }
+    
+    if (this.isRunning) {
+      this.logSystem.warn("System monitor is already running");
+      return false;
+    }
+    
+    this.logSystem.info("Starting system monitoring");
+    
+    this.isRunning = true;
+    this.startTime = Date.now();
+    
+    // Start health check interval
+    this.healthCheckInterval = setInterval(() => {
+      this.performHealthCheck().catch(error => {
+        this.logSystem.error(`Health check failed: ${error.message}`);
+      });
+    }, this.config.healthCheckInterval);
+    
+    // Start metrics collection interval
+    this.metricsCollectionInterval = setInterval(() => {
+      this.collectMetrics().catch(error => {
+        this.logSystem.error(`Metrics collection failed: ${error.message}`);
+      });
+    }, this.config.metricsCollectionInterval);
+    
+    // Start alert check interval
+    this.alertCheckInterval = setInterval(() => {
+      this.checkAlerts().catch(error => {
+        this.logSystem.error(`Alert check failed: ${error.message}`);
+      });
+    }, this.config.alertCheckInterval);
+    
+    // Perform initial checks
+    await this.performHealthCheck();
+    await this.collectMetrics();
+    await this.checkAlerts();
+    
+    this.logSystem.info("System monitoring started");
+    
+    return true;
+  }
+  
+  async stopMonitoring() {
+    if (!this.isRunning) {
+      this.logSystem.warn("System monitor is not running");
+      return false;
+    }
+    
+    this.logSystem.info("Stopping system monitoring");
+    
+    // Clear intervals
+    clearInterval(this.healthCheckInterval);
+    clearInterval(this.metricsCollectionInterval);
+    clearInterval(this.alertCheckInterval);
+    
+    this.healthCheckInterval = null;
+    this.metricsCollectionInterval = null;
+    this.alertCheckInterval = null;
+    
+    this.isRunning = false;
+    
+    this.logSystem.info("System monitoring stopped");
+    
+    return true;
+  }
+  
+  async performHealthCheck() {
+    if (!this.isRunning) {
+      return false;
+    }
+    
+    this.logSystem.debug("Performing system health check");
+    
+    try {
+      // Check system health
+      const systemStatus = await this.checkSystemHealth();
+      
+      // Check component health
+      const componentStatuses = await this.checkComponentsHealth();
+      
+      // Update system health status
+      this.systemHealth.status = this.determineOverallHealth(systemStatus, componentStatuses);
+      this.systemHealth.lastCheck = Date.now();
+      
+      this.logSystem.debug(`System health status: ${this.systemHealth.status}`);
+      
+      return this.systemHealth;
+    } catch (error) {
+      this.logSystem.error(`Health check error: ${error.message}`);
+      
+      // Update system health status to unhealthy
+      this.systemHealth.status = 'unhealthy';
+      this.systemHealth.lastCheck = Date.now();
+      this.systemHealth.lastError = error.message;
+      
+      return this.systemHealth;
+    }
+  }
+  
+  async checkSystemHealth() {
+    // Check overall system health
+    const systemStatus = {
+      status: 'healthy',
+      details: {}
+    };
+    
+    // Check if system is initialized and active
+    if (!this.edgeNativeSystem.isInitialized) {
+      systemStatus.status = 'unhealthy';
+      systemStatus.details.initialized = false;
+    } else if (!this.edgeNativeSystem.isActive) {
+      systemStatus.status = 'degraded';
+      systemStatus.details.active = false;
+    }
+    
+    // Check system uptime
+    systemStatus.details.uptime = Date.now() - this.edgeNativeSystem.startTime;
+    
+    // Check system version
+    systemStatus.details.version = this.edgeNativeSystem.version;
+    
+    // Check system mode
+    systemStatus.details.mode = this.edgeNativeSystem.mode;
+    
+    return systemStatus;
+  }
+  
+  async checkComponentsHealth() {
+    // Check health of all components
+    const componentStatuses = new Map();
+    const components = this.edgeNativeSystem.getComponents();
+    
+    for (const [componentId, component] of components) {
+      try {
+        // Skip if component doesn't have a health check method
+        if (!component.checkHealth) {
+          continue;
+        }
+        
+        // Perform component health check
+        const healthStatus = await component.checkHealth();
+        
+        // Store health status
+        this.systemHealth.components.set(componentId, {
+          status: healthStatus.status,
+          lastCheck: Date.now(),
+          details: healthStatus.details || {}
+        });
+        
+        componentStatuses.set(componentId, healthStatus);
+      } catch (error) {
+        this.logSystem.error(`Health check failed for component ${componentId}: ${error.message}`);
+        
+        // Mark component as unhealthy
+        this.systemHealth.components.set(componentId, {
+          status: 'unhealthy',
+          lastCheck: Date.now(),
+          details: {
+            error: error.message
+          }
+        });
+        
+        componentStatuses.set(componentId, {
+          status: 'unhealthy',
+          details: {
+            error: error.message
+          }
+        });
+      }
+    }
+    
+    return componentStatuses;
+  }
+  
+  determineOverallHealth(systemStatus, componentStatuses) {
+    // If system is unhealthy, overall status is unhealthy
+    if (systemStatus.status === 'unhealthy') {
+      return 'unhealthy';
+    }
+    
+    // Check if any critical components are unhealthy
+    for (const [componentId, status] of componentStatuses.entries()) {
+      const component = this.edgeNativeSystem.getComponent(componentId);
+      
+      if (component && component.critical && status.status === 'unhealthy') {
+        return 'unhealthy';
+      }
+    }
+    
+    // Check if system or any critical components are degraded
+    if (systemStatus.status === 'degraded') {
+      return 'degraded';
+    }
+    
+    for (const [componentId, status] of componentStatuses.entries()) {
+      const component = this.edgeNativeSystem.getComponent(componentId);
+      
+      if (component && component.critical && status.status === 'degraded') {
+        return 'degraded';
+      }
+    }
+    
+    // If we get here, system is healthy
+    return 'healthy';
+  }
+  
+  async collectMetrics() {
+    if (!this.isRunning) {
+      return false;
+    }
+    
+    this.logSystem.debug("Collecting system metrics");
+    
+    try {
+      // Collect system metrics
+      await this.collectSystemMetrics();
+      
+      // Collect component metrics
+      await this.collectComponentMetrics();
+      
+      // Collect resource metrics
+      await this.collectResourceMetrics();
+      
+      return true;
+    } catch (error) {
+      this.logSystem.error(`Metrics collection error: ${error.message}`);
+      return false;
+    }
+  }
+  
+  async collectSystemMetrics() {
+    // Collect overall system metrics
+    const systemMetrics = this.metrics.system;
+    
+    // Update CPU usage
+    const cpuUsage = await this.getCpuUsage();
+    systemMetrics.updateMetric('cpuUsage', cpuUsage);
+    
+    // Update memory usage
+    const memoryUsage = await this.getMemoryUsage();
+    systemMetrics.updateMetric('memoryUsage', memoryUsage);
+    
+    // Update uptime
+    const uptime = Date.now() - this.edgeNativeSystem.startTime;
+    systemMetrics.updateMetric('uptime', uptime);
+    
+    // Update active components count
+    const activeComponents = Array.from(this.edgeNativeSystem.getComponents().values())
+      .filter(component => component.isActive).length;
+    systemMetrics.updateMetric('activeComponents', activeComponents);
+    
+    // Update error count from system logs
+    const recentLogs = this.edgeNativeSystem.getRecentLogs(this.config.metricsCollectionInterval);
+    const errorLogs = recentLogs.filter(log => log.level === 'error');
+    systemMetrics.incrementMetric('errorCount', errorLogs.length);
+    
+    // Update request count and response times
+    const requestLogs = recentLogs.filter(log => log.type === 'request');
+    systemMetrics.incrementMetric('requestCount', requestLogs.length);
+    
+    for (const log of requestLogs) {
+      if (log.duration) {
+        systemMetrics.recordMetric('responseTime', log.duration);
+      }
+    }
+    
+    return systemMetrics;
+  }
+  
+  async collectComponentMetrics() {
+    // Collect metrics for all components
+    const components = this.edgeNativeSystem.getComponents();
+    
+    for (const [componentId, component] of components) {
+      try {
+        // Skip if component doesn't have a getMetrics method
+        if (!component.getMetrics) {
+          continue;
+        }
+        
+        // Get component metrics store
+        const metricsStore = this.metrics.components.get(componentId);
+        
+        if (!metricsStore) {
+          continue;
+        }
+        
+        // Get component metrics
+        const componentMetrics = await component.getMetrics();
+        
+        // Update metrics store
+        for (const [metricName, metricValue] of Object.entries(componentMetrics)) {
+          if (metricsStore.hasMetric(metricName)) {
+            if (typeof metricValue === 'number') {
+              metricsStore.updateMetric(metricName, metricValue);
+            } else if (metricValue && typeof metricValue === 'object' && metricValue.value !== undefined) {
+              if (metricValue.type === 'counter' && metricValue.increment !== undefined) {
+                metricsStore.incrementMetric(metricName, metricValue.increment);
+              } else if (metricValue.type === 'histogram' && Array.isArray(metricValue.values)) {
+                for (const value of metricValue.values) {
+                  metricsStore.recordMetric(metricName, value);
+                }
+              } else {
+                metricsStore.updateMetric(metricName, metricValue.value);
+              }
+            }
+          }
+        }
+        
+        // Update component status
+        metricsStore.updateMetric('status', component.isActive ? 1 : 0);
+        
+        // Update component uptime
+        if (component.startTime) {
+          const uptime = Date.now() - component.startTime;
+          metricsStore.updateMetric('uptime', uptime);
+        }
+      } catch (error) {
+        this.logSystem.error(`Metrics collection failed for component ${componentId}: ${error.message}`);
+      }
+    }
+    
+    return true;
+  }
+  
+  async collectResourceMetrics() {
+    // Collect resource metrics (CPU, memory, disk, network)
+    try {
+      // Get CPU metrics
+      const cpuMetrics = await this.getCpuMetrics();
+      this.metrics.resources.updateCpuMetrics(cpuMetrics);
+      
+      // Get memory metrics
+      const memoryMetrics = await this.getMemoryMetrics();
+      this.metrics.resources.updateMemoryMetrics(memoryMetrics);
+      
+      // Get disk metrics
+      const diskMetrics = await this.getDiskMetrics();
+      this.metrics.resources.updateDiskMetrics(diskMetrics);
+      
+      // Get network metrics
+      const networkMetrics = await this.getNetworkMetrics();
+      this.metrics.resources.updateNetworkMetrics(networkMetrics);
+      
+      return true;
+    } catch (error) {
+      this.logSystem.error(`Resource metrics collection error: ${error.message}`);
+      return false;
+    }
+  }
+  
+  async getCpuUsage() {
+    // This is a simplified implementation
+    // In a real implementation, this would use OS-specific APIs
+    
+    // Simulate CPU usage between 0 and 1
+    return Math.random() * 0.5 + 0.1; // 10-60% usage
+  }
+  
+  async getMemoryUsage() {
+    // This is a simplified implementation
+    // In a real implementation, this would use OS-specific APIs
+    
+    // Simulate memory usage between 0 and 1
+    return Math.random() * 0.4 + 0.2; // 20-60% usage
+  }
+  
+  async getCpuMetrics() {
+    // This is a simplified implementation
+    // In a real implementation, this would use OS-specific APIs
+    
+    return {
+      usage: Math.random() * 0.5 + 0.1, // 10-60% usage
+      cores: 8,
+      load: [
+        Math.random() * 2, // 1 minute load
+        Math.random() * 1.5, // 5 minute load
+        Math.random() * 1 // 15 minute load
+      ]
+    };
+  }
+  
+  async getMemoryMetrics() {
+    // This is a simplified implementation
+    // In a real implementation, this would use OS-specific APIs
+    
+    const totalMemory = 16 * 1024 * 1024 * 1024; // 16 GB
+    const usedMemory = totalMemory * (Math.random() * 0.4 + 0.2); // 20-60% usage
+    
+    return {
+      total: totalMemory,
+      used: usedMemory,
+      free: totalMemory - usedMemory,
+      usage: usedMemory / totalMemory
+    };
+  }
+  
+  async getDiskMetrics() {
+    // This is a simplified implementation
+    // In a real implementation, this would use OS-specific APIs
+    
+    const totalDisk = 1024 * 1024 * 1024 * 1024; // 1 TB
+    const usedDisk = totalDisk * (Math.random() * 0.3 + 0.1); // 10-40% usage
+    
+    return {
+      total: totalDisk,
+      used: usedDisk,
+      free: totalDisk - usedDisk,
+      usage: usedDisk / totalDisk,
+      readRate: Math.random() * 50 * 1024 * 1024, // 0-50 MB/s
+      writeRate: Math.random() * 20 * 1024 * 1024 // 0-20 MB/s
+    };
+  }
+  
+  async getNetworkMetrics() {
+    // This is a simplified implementation
+    // In a real implementation, this would use OS-specific APIs
+    
+    return {
+      interfaces: [
+        {
+          name: 'eth0',
+          bytesIn: Math.random() * 10 * 1024 * 1024, // 0-10 MB/s
+          bytesOut: Math.random() * 5 * 1024 * 1024, // 0-5 MB/s
+          packetsIn: Math.random() * 10000, // 0-10K packets/s
+          packetsOut: Math.random() * 5000, // 0-5K packets/s
+          errors: Math.floor(Math.random() * 10) // 0-10 errors
+        }
+      ],
+      connections: Math.floor(Math.random() * 1000) // 0-1000 connections
+    };
+  }
+  
+  async checkAlerts() {
+    if (!this.isRunning) {
+      return false;
+    }
+    
+    this.logSystem.debug("Checking alert conditions");
+    
+    try {
+      // Check each alert rule
+      for (const [ruleId, rule] of this.alerts.rules.entries()) {
+        try {
+          // Skip if rule is disabled
+          if (rule.disabled) {
+            continue;
+          }
+          
+          // Check if rule condition is met
+          const isTriggered = rule.condition(this.metrics);
+          
+          // If condition is met and alert is not already active, trigger alert
+          if (isTriggered && !this.alerts.active.has(ruleId)) {
+            await this.triggerAlert(rule);
+          }
+          // If condition is not met and alert is active, resolve alert
+          else if (!isTriggered && this.alerts.active.has(ruleId)) {
+            await this.resolveAlert(ruleId);
+          }
+        } catch (error) {
+          this.logSystem.error(`Error checking alert rule ${ruleId}: ${error.message}`);
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      this.logSystem.error(`Alert check error: ${error.message}`);
+      return false;
+    }
+  }
+  
+  async triggerAlert(rule) {
+    this.logSystem.warn(`Alert triggered: ${rule.name}`);
+    
+    // Create alert instance
+    const alert = {
+      id: `alert-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+      ruleId: rule.id,
+      name: rule.name,
+      description: rule.description,
+      severity: rule.severity,
+      status: 'active',
+      triggeredAt: Date.now(),
+      resolvedAt: null,
+      actions: rule.actions || []
+    };
+    
+    // Add to active alerts
+    this.alerts.active.set(rule.id, alert);
+    
+    // Add to alert history
+    this.alerts.history.push(alert);
+    
+    // Limit alert history size
+    if (this.alerts.history.length > 1000) {
+      this.alerts.history = this.alerts.history.slice(-1000);
+    }
+    
+    // Execute alert actions
+    await this.executeAlertActions(alert);
+    
+    return alert;
+  }
+  
+  async resolveAlert(ruleId) {
+    if (!this.alerts.active.has(ruleId)) {
+      return false;
+    }
+    
+    const alert = this.alerts.active.get(ruleId);
+    
+    this.logSystem.info(`Alert resolved: ${alert.name}`);
+    
+    // Update alert status
+    alert.status = 'resolved';
+    alert.resolvedAt = Date.now();
+    
+    // Remove from active alerts
+    this.alerts.active.delete(ruleId);
+    
+    // Update alert in history
+    const historyIndex = this.alerts.history.findIndex(a => a.id === alert.id);
+    
+    if (historyIndex >= 0) {
+      this.alerts.history[historyIndex] = alert;
+    }
+    
+    // Notify about resolved alert
+    await this.notificationSystem.sendNotification({
+      type: 'alert-resolved',
+      title: `Alert Resolved: ${alert.name}`,
+      message: `The alert "${alert.name}" has been resolved.`,
+      severity: 'info',
+      timestamp: Date.now(),
+      data: alert
+    });
+    
+    return true;
+  }
+  
+  async executeAlertActions(alert) {
+    for (const action of alert.actions) {
+      try {
+        if (action === 'notify') {
+          await this.notificationSystem.sendNotification({
+            type: 'alert-triggered',
+            title: `Alert: ${alert.name}`,
+            message: alert.description,
+            severity: alert.severity,
+            timestamp: alert.triggeredAt,
+            data: alert
+          });
+        } else if (action === 'log') {
+          this.logSystem.warn(`Alert triggered: ${alert.name} - ${alert.description}`);
+        } else if (typeof action === 'function') {
+          await action(alert, this);
+        }
+      } catch (error) {
+        this.logSystem.error(`Error executing alert action: ${error.message}`);
+      }
+    }
+    
+    return true;
+  }
+  
+  async collectLogs() {
+    if (!this.isRunning) {
+      return false;
+    }
+    
+    this.logSystem.debug("Collecting system logs");
+    
+    try {
+      // Collect system logs
+      const systemLogs = this.edgeNativeSystem.getRecentLogs();
+      
+      // Add to system logs
+      this.logs.system.push(...systemLogs);
+      
+      // Limit system logs size
+      if (this.logs.system.length > this.logs.maxLogEntries) {
+        this.logs.system = this.logs.system.slice(-this.logs.maxLogEntries);
+      }
+      
+      // Collect component logs
+      const components = this.edgeNativeSystem.getComponents();
+      
+      for (const [componentId, component] of components) {
+        try {
+          // Skip if component doesn't have a getLogs method
+          if (!component.getLogs) {
+            continue;
+          }
+          
+          // Get component logs
+          const componentLogs = await component.getLogs();
+          
+          // Get component log storage
+          const componentLogStorage = this.logs.components.get(componentId);
+          
+          if (!componentLogStorage) {
+            continue;
+          }
+          
+          // Add to component logs
+          componentLogStorage.push(...componentLogs);
+          
+          // Limit component logs size
+          if (componentLogStorage.length > this.logs.maxLogEntries) {
+            this.logs.components.set(
+              componentId,
+              componentLogStorage.slice(-this.logs.maxLogEntries)
+            );
+          }
+        } catch (error) {
+          this.logSystem.error(`Error collecting logs for component ${componentId}: ${error.message}`);
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      this.logSystem.error(`Log collection error: ${error.message}`);
+      return false;
+    }
+  }
+  
+  getSystemStatus() {
+    // Get current system status
+    return {
+      id: this.id,
+      name: this.name,
+      timestamp: Date.now(),
+      uptime: this.startTime ? Date.now() - this.startTime : 0,
+      health: {
+        status: this.systemHealth.status,
+        lastCheck: this.systemHealth.lastCheck,
+        components: Array.from(this.systemHealth.components.entries()).map(([id, health]) => ({
+          id,
+          status: health.status,
+          lastCheck: health.lastCheck
+        }))
+      },
+      metrics: {
+        cpu: this.metrics.system.getMetric('cpuUsage').latest(),
+        memory: this.metrics.system.getMetric('memoryUsage').latest(),
+        activeComponents: this.metrics.system.getMetric('activeComponents').latest(),
+        errorCount: this.metrics.system.getMetric('errorCount').total(),
+        requestCount: this.metrics.system.getMetric('requestCount').total(),
+        responseTime: this.metrics.system.getMetric('responseTime').percentile(95)
+      },
+      alerts: {
+        active: Array.from(this.alerts.active.values()).map(alert => ({
+          id: alert.id,
+          name: alert.name,
+          severity: alert.severity,
+          triggeredAt: alert.triggeredAt
+        }))
+      }
+    };
+  }
+  
+  getMetricsData(options = {}) {
+    const result = {
+      timestamp: Date.now(),
+      system: {},
+      components: {},
+      resources: {}
+    };
+    
+    // Get time range
+    const endTime = options.endTime || Date.now();
+    const startTime = options.startTime || (endTime - (options.duration || 3600000)); // Default to last hour
+    
+    // Get resolution
+    const resolution = options.resolution || 'medium';
+    
+    // Get system metrics
+    for (const metricName of options.systemMetrics || ['cpuUsage', 'memoryUsage', 'uptime', 'activeComponents', 'errorCount', 'requestCount', 'responseTime']) {
+      const metric = this.metrics.system.getMetric(metricName);
+      
+      if (metric) {
+        result.system[metricName] = metric.getTimeSeries(startTime, endTime, resolution);
+      }
+    }
+    
+    // Get component metrics
+    for (const componentId of options.components || Array.from(this.metrics.components.keys())) {
+      const componentMetrics = this.metrics.components.get(componentId);
+      
+      if (componentMetrics) {
+        result.components[componentId] = {};
+        
+        for (const metricName of options.componentMetrics || ['status', 'uptime', 'errorCount', 'operationCount']) {
+          const metric = componentMetrics.getMetric(metricName);
+          
+          if (metric) {
+            result.components[componentId][metricName] = metric.getTimeSeries(startTime, endTime, resolution);
+          }
+        }
+      }
+    }
+    
+    // Get resource metrics
+    result.resources = this.metrics.resources.getTimeSeries(startTime, endTime, resolution);
+    
+    return result;
+  }
+  
+  getAlerts(options = {}) {
+    // Get alerts based on options
+    let alerts = [...this.alerts.history];
+    
+    // Filter by status
+    if (options.status) {
+      alerts = alerts.filter(alert => alert.status === options.status);
+    }
+    
+    // Filter by severity
+    if (options.severity) {
+      alerts = alerts.filter(alert => alert.severity === options.severity);
+    }
+    
+    // Filter by time range
+    if (options.startTime) {
+      alerts = alerts.filter(alert => alert.triggeredAt >= options.startTime);
+    }
+    
+    if (options.endTime) {
+      alerts = alerts.filter(alert => alert.triggeredAt <= options.endTime);
+    }
+    
+    // Sort by time (newest first)
+    alerts.sort((a, b) => b.triggeredAt - a.triggeredAt);
+    
+    // Limit results
+    if (options.limit) {
+      alerts = alerts.slice(0, options.limit);
+    }
+    
+    return alerts;
+  }
+  
+  getLogs(options = {}) {
+    // Get logs based on options
+    let logs = [];
+    
+    // Get system logs
+    if (!options.components || options.components.includes('system')) {
+      logs.push(...this.logs.system.map(log => ({
+        ...log,
+        component: 'system'
+      })));
+    }
+    
+    // Get component logs
+    if (!options.components || options.components.length > 0) {
+      for (const [componentId, componentLogs] of this.logs.components.entries()) {
+        if (!options.components || options.components.includes(componentId)) {
+          logs.push(...componentLogs.map(log => ({
+            ...log,
+            component: componentId
+          })));
+        }
+      }
+    }
+    
+    // Filter by level
+    if (options.level) {
+      logs = logs.filter(log => log.level === options.level);
+    }
+    
+    // Filter by time range
+    if (options.startTime) {
+      logs = logs.filter(log => log.timestamp >= options.startTime);
+    }
+    
+    if (options.endTime) {
+      logs = logs.filter(log => log.timestamp <= options.endTime);
+    }
+    
+    // Sort by time (newest first)
+    logs.sort((a, b) => b.timestamp - a.timestamp);
+    
+    // Limit results
+    if (options.limit) {
+      logs = logs.slice(0, options.limit);
+    }
+    
+    return logs;
+  }
+  
+  generateReport(options = {}) {
+    // Generate a comprehensive system report
+    const report = {
+      title: options.title || `${this.name} Report`,
+      timestamp: Date.now(),
+      period: {
+        start: options.startTime || (Date.now() - (options.duration || 86400000)), // Default to last 24 hours
+        end: options.endTime || Date.now()
+      },
+      system: {
+        id: this.edgeNativeSystem.id,
+        name: this.edgeNativeSystem.name,
+        version: this.edgeNativeSystem.version,
+        uptime: Date.now() - this.edgeNativeSystem.startTime,
+        health: this.systemHealth.status
+      },
+      components: Array.from(this.systemHealth.components.entries()).map(([id, health]) => ({
+        id,
+        status: health.status,
+        lastCheck: health.lastCheck
+      })),
+      metrics: this.getMetricsData({
+        startTime: options.startTime,
+        endTime: options.endTime,
+        resolution: options.resolution || 'low'
+      }),
+      alerts: this.getAlerts({
+        startTime: options.startTime,
+        endTime: options.endTime
+      }),
+      logs: {
+        error: this.getLogs({
+          startTime: options.startTime,
+          endTime: options.endTime,
+          level: 'error',
+          limit: 100
+        }),
+        warn: this.getLogs({
+          startTime: options.startTime,
+          endTime: options.endTime,
+          level: 'warn',
+          limit: 100
+        })
+      }
+    };
+    
+    return report;
+  }
+}
+
+// Helper classes
+
+class MetricsStore {
+  constructor(name) {
+    this.name = name;
+    this.metrics = new Map();
+  }
+  
+  addMetric(name, type) {
+    if (this.metrics.has(name)) {
+      return this.metrics.get(name);
+    }
+    
+    let metric;
+    
+    switch (type) {
+      case 'gauge':
+        metric = new GaugeMetric(name);
+        break;
+      case 'counter':
+        metric = new CounterMetric(name);
+        break;
+      case 'histogram':
+        metric = new HistogramMetric(name);
+        break;
+      default:
+        throw new Error(`Unknown metric type: ${type}`);
+    }
+    
+    this.metrics.set(name, metric);
+    return metric;
+  }
+  
+  hasMetric(name) {
+    return this.metrics.has(name);
+  }
+  
+  getMetric(name) {
+    return this.metrics.get(name);
+  }
+  
+  updateMetric(name, value) {
+    const metric = this.getMetric(name);
+    
+    if (!metric) {
+      throw new Error(`Metric not found: ${name}`);
+    }
+    
+    metric.update(value);
+    return metric;
+  }
+  
+  incrementMetric(name, value = 1) {
+    const metric = this.getMetric(name);
+    
+    if (!metric) {
+      throw new Error(`Metric not found: ${name}`);
+    }
+    
+    if (metric.type !== 'counter') {
+      throw new Error(`Cannot increment non-counter metric: ${name}`);
+    }
+    
+    metric.increment(value);
+    return metric;
+  }
+  
+  recordMetric(name, value) {
+    const metric = this.getMetric(name);
+    
+    if (!metric) {
+      throw new Error(`Metric not found: ${name}`);
+    }
+    
+    if (metric.type !== 'histogram') {
+      throw new Error(`Cannot record value for non-histogram metric: ${name}`);
+    }
+    
+    metric.record(value);
+    return metric;
+  }
+  
+  getMetrics() {
+    const result = {};
+    
+    for (const [name, metric] of this.metrics.entries()) {
+      result[name] = metric.getValue();
+    }
+    
+    return result;
+  }
+}
+
+class GaugeMetric {
+  constructor(name) {
+    this.name = name;
+    this.type = 'gauge';
+    this.values = [];
+    this.maxValues = 1000;
+  }
+  
+  update(value) {
+    this.values.push({
+      timestamp: Date.now(),
+      value
+    });
+    
+    // Limit number of stored values
+    if (this.values.length > this.maxValues) {
+      this.values = this.values.slice(-this.maxValues);
+    }
+    
+    return this;
+  }
+  
+  latest() {
+    if (this.values.length === 0) {
+      return null;
+    }
+    
+    return this.values[this.values.length - 1].value;
+  }
+  
+  average(duration) {
+    if (this.values.length === 0) {
+      return null;
+    }
+    
+    if (!duration) {
+      return this.values.reduce((sum, v) => sum + v.value, 0) / this.values.length;
+    }
+    
+    const cutoff = Date.now() - duration;
+    const recentValues = this.values.filter(v => v.timestamp >= cutoff);
+    
+    if (recentValues.length === 0) {
+      return null;
+    }
+    
+    return recentValues.reduce((sum, v) => sum + v.value, 0) / recentValues.length;
+  }
+  
+  min(duration) {
+    if (this.values.length === 0) {
+      return null;
+    }
+    
+    if (!duration) {
+      return Math.min(...this.values.map(v => v.value));
+    }
+    
+    const cutoff = Date.now() - duration;
+    const recentValues = this.values.filter(v => v.timestamp >= cutoff);
+    
+    if (recentValues.length === 0) {
+      return null;
+    }
+    
+    return Math.min(...recentValues.map(v => v.value));
+  }
+  
+  max(duration) {
+    if (this.values.length === 0) {
+      return null;
+    }
+    
+    if (!duration) {
+      return Math.max(...this.values.map(v => v.value));
+    }
+    
+    const cutoff = Date.now() - duration;
+    const recentValues = this.values.filter(v => v.timestamp >= cutoff);
+    
+    if (recentValues.length === 0) {
+      return null;
+    }
+    
+    return Math.max(...recentValues.map(v => v.value));
+  }
+  
+  getValue() {
+    return this.latest();
+  }
+  
+  getTimeSeries(startTime, endTime, resolution = 'medium') {
+    // Filter values by time range
+    const filteredValues = this.values.filter(v => 
+      v.timestamp >= startTime && v.timestamp <= endTime
+    );
+    
+    if (filteredValues.length === 0) {
+      return [];
+    }
+    
+    // If resolution is 'high', return all values
+    if (resolution === 'high') {
+      return filteredValues;
+    }
+    
+    // Otherwise, aggregate values by time bucket
+    const bucketSize = resolution === 'low' ? 
+      Math.max(3600000, Math.floor((endTime - startTime) / 24)) : // 1 hour or 24 buckets
+      Math.max(60000, Math.floor((endTime - startTime) / 100)); // 1 minute or 100 buckets
+    
+    const buckets = new Map();
+    
+    for (const value of filteredValues) {
+      const bucketTime = Math.floor(value.timestamp / bucketSize) * bucketSize;
+      
+      if (!buckets.has(bucketTime)) {
+        buckets.set(bucketTime, []);
+      }
+      
+      buckets.get(bucketTime).push(value.value);
+    }
+    
+    // Calculate average for each bucket
+    const result = [];
+    
+    for (const [bucketTime, values] of buckets.entries()) {
+      const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+      
+      result.push({
+        timestamp: bucketTime,
+        value: avg
+      });
+    }
+    
+    // Sort by timestamp
+    result.sort((a, b) => a.timestamp - b.timestamp);
+    
+    return result;
+  }
+}
+
+class CounterMetric {
+  constructor(name) {
+    this.name = name;
+    this.type = 'counter';
+    this.values = [];
+    this.maxValues = 1000;
+  }
+  
+  increment(value = 1) {
+    const lastValue = this.values.length > 0 ? 
+      this.values[this.values.length - 1].value : 0;
+    
+    this.values.push({
+      timestamp: Date.now(),
+      value: lastValue + value,
+      increment: value
+    });
+    
+    // Limit number of stored values
+    if (this.values.length > this.maxValues) {
+      this.values = this.values.slice(-this.maxValues);
+    }
+    
+    return this;
+  }
+  
+  update(value) {
+    // For a counter, update sets the absolute value
+    const lastValue = this.values.length > 0 ? 
+      this.values[this.values.length - 1].value : 0;
+    
+    this.values.push({
+      timestamp: Date.now(),
+      value,
+      increment: value - lastValue
+    });
+    
+    // Limit number of stored values
+    if (this.values.length > this.maxValues) {
+      this.values = this.values.slice(-this.maxValues);
+    }
+    
+    return this;
+  }
+  
+  total() {
+    if (this.values.length === 0) {
+      return 0;
+    }
+    
+    return this.values[this.values.length - 1].value;
+  }
+  
+  delta(duration) {
+    if (this.values.length === 0) {
+      return 0;
+    }
+    
+    if (!duration) {
+      return this.values[this.values.length - 1].increment;
+    }
+    
+    const cutoff = Date.now() - duration;
+    const recentValues = this.values.filter(v => v.timestamp >= cutoff);
+    
+    if (recentValues.length === 0) {
+      return 0;
+    }
+    
+    return recentValues.reduce((sum, v) => sum + v.increment, 0);
+  }
+  
+  rate(duration = 60000) {
+    const delta = this.delta(duration);
+    return delta / (duration / 1000); // per second
+  }
+  
+  getValue() {
+    return this.total();
+  }
+  
+  getTimeSeries(startTime, endTime, resolution = 'medium') {
+    // Filter values by time range
+    const filteredValues = this.values.filter(v => 
+      v.timestamp >= startTime && v.timestamp <= endTime
+    );
+    
+    if (filteredValues.length === 0) {
+      return [];
+    }
+    
+    // If resolution is 'high', return all values
+    if (resolution === 'high') {
+      return filteredValues;
+    }
+    
+    // Otherwise, aggregate values by time bucket
+    const bucketSize = resolution === 'low' ? 
+      Math.max(3600000, Math.floor((endTime - startTime) / 24)) : // 1 hour or 24 buckets
+      Math.max(60000, Math.floor((endTime - startTime) / 100)); // 1 minute or 100 buckets
+    
+    const buckets = new Map();
+    
+    for (const value of filteredValues) {
+      const bucketTime = Math.floor(value.timestamp / bucketSize) * bucketSize;
+      
+      if (!buckets.has(bucketTime)) {
+        buckets.set(bucketTime, {
+          increments: [],
+          lastValue: null
+        });
+      }
+      
+      buckets.get(bucketTime).increments.push(value.increment);
+      buckets.get(bucketTime).lastValue = value.value;
+    }
+    
+    // Calculate sum of increments for each bucket
+    const result = [];
+    
+    for (const [bucketTime, data] of buckets.entries()) {
+      const incrementSum = data.increments.reduce((sum, v) => sum + v, 0);
+      
+      result.push({
+        timestamp: bucketTime,
+        value: data.lastValue,
+        increment: incrementSum
+      });
+    }
+    
+    // Sort by timestamp
+    result.sort((a, b) => a.timestamp - b.timestamp);
+    
+    return result;
+  }
+}
+
+class HistogramMetric {
+  constructor(name) {
+    this.name = name;
+    this.type = 'histogram';
+    this.values = [];
+    this.maxValues = 10000;
+  }
+  
+  record(value) {
+    this.values.push({
+      timestamp: Date.now(),
+      value
+    });
+    
+    // Limit number of stored values
+    if (this.values.length > this.maxValues) {
+      this.values = this.values.slice(-this.maxValues);
+    }
+    
+    return this;
+  }
+  
+  update(value) {
+    // For a histogram, update is the same as record
+    return this.record(value);
+  }
+  
+  count(duration) {
+    if (!duration) {
+      return this.values.length;
+    }
+    
+    const cutoff = Date.now() - duration;
+    return this.values.filter(v => v.timestamp >= cutoff).length;
+  }
+  
+  min(duration) {
+    if (this.values.length === 0) {
+      return null;
+    }
+    
+    if (!duration) {
+      return Math.min(...this.values.map(v => v.value));
+    }
+    
+    const cutoff = Date.now() - duration;
+    const recentValues = this.values.filter(v => v.timestamp >= cutoff);
+    
+    if (recentValues.length === 0) {
+      return null;
+    }
+    
+    return Math.min(...recentValues.map(v => v.value));
+  }
+  
+  max(duration) {
+    if (this.values.length === 0) {
+      return null;
+    }
+    
+    if (!duration) {
+      return Math.max(...this.values.map(v => v.value));
+    }
+    
+    const cutoff = Date.now() - duration;
+    const recentValues = this.values.filter(v => v.timestamp >= cutoff);
+    
+    if (recentValues.length === 0) {
+      return null;
+    }
+    
+    return Math.max(...recentValues.map(v => v.value));
+  }
+  
+  average(duration) {
+    if (this.values.length === 0) {
+      return null;
+    }
+    
+    if (!duration) {
+      return this.values.reduce((sum, v) => sum + v.value, 0) / this.values.length;
+    }
+    
+    const cutoff = Date.now() - duration;
+    const recentValues = this.values.filter(v => v.timestamp >= cutoff);
+    
+    if (recentValues.length === 0) {
+      return null;
+    }
+    
+    return recentValues.reduce((sum, v) => sum + v.value, 0) / recentValues.length;
+  }
+  
+  percentile(p, duration) {
+    if (this.values.length === 0) {
+      return null;
+    }
+    
+    let valuesToUse;
+    
+    if (!duration) {
+      valuesToUse = this.values;
+    } else {
+      const cutoff = Date.now() - duration;
+      valuesToUse = this.values.filter(v => v.timestamp >= cutoff);
+    }
+    
+    if (valuesToUse.length === 0) {
+      return null;
+    }
+    
+    // Sort values
+    const sortedValues = [...valuesToUse].sort((a, b) => a.value - b.value);
+    
+    // Calculate percentile index
+    const index = Math.ceil((p / 100) * sortedValues.length) - 1;
+    
+    return sortedValues[Math.max(0, Math.min(index, sortedValues.length - 1))].value;
+  }
+  
+  getValue() {
+    return {
+      count: this.count(),
+      min: this.min(),
+      max: this.max(),
+      avg: this.average(),
+      p50: this.percentile(50),
+      p95: this.percentile(95),
+      p99: this.percentile(99)
+    };
+  }
+  
+  getTimeSeries(startTime, endTime, resolution = 'medium') {
+    // Filter values by time range
+    const filteredValues = this.values.filter(v => 
+      v.timestamp >= startTime && v.timestamp <= endTime
+    );
+    
+    if (filteredValues.length === 0) {
+      return [];
+    }
+    
+    // Calculate bucket size based on resolution
+    const bucketSize = resolution === 'low' ? 
+      Math.max(3600000, Math.floor((endTime - startTime) / 24)) : // 1 hour or 24 buckets
+      Math.max(60000, Math.floor((endTime - startTime) / 100)); // 1 minute or 100 buckets
+    
+    // Group values by bucket
+    const buckets = new Map();
+    
+    for (const value of filteredValues) {
+      const bucketTime = Math.floor(value.timestamp / bucketSize) * bucketSize;
+      
+      if (!buckets.has(bucketTime)) {
+        buckets.set(bucketTime, []);
+      }
+      
+      buckets.get(bucketTime).push(value.value);
+    }
+    
+    // Calculate statistics for each bucket
+    const result = [];
+    
+    for (const [bucketTime, values] of buckets.entries()) {
+      // Sort values for percentile calculation
+      const sortedValues = [...values].sort((a, b) => a - b);
+      
+      result.push({
+        timestamp: bucketTime,
+        count: values.length,
+        min: Math.min(...values),
+        max: Math.max(...values),
+        avg: values.reduce((sum, v) => sum + v, 0) / values.length,
+        p50: sortedValues[Math.floor(sortedValues.length * 0.5)],
+        p95: sortedValues[Math.floor(sortedValues.length * 0.95)],
+        p99: sortedValues[Math.floor(sortedValues.length * 0.99)]
+      });
+    }
+    
+    // Sort by timestamp
+    result.sort((a, b) => a.timestamp - b.timestamp);
+    
+    return result;
+  }
+}
+
+class ResourceMetricsStore {
+  constructor() {
+    this.cpu = {
+      usage: new GaugeMetric('cpu.usage'),
+      cores: new GaugeMetric('cpu.cores'),
+      load: new GaugeMetric('cpu.load')
+    };
+    
+    this.memory = {
+      total: new GaugeMetric('memory.total'),
+      used: new GaugeMetric('memory.used'),
+      free: new GaugeMetric('memory.free'),
+      usage: new GaugeMetric('memory.usage')
+    };
+    
+    this.disk = {
+      total: new GaugeMetric('disk.total'),
+      used: new GaugeMetric('disk.used'),
+      free: new GaugeMetric('disk.free'),
+      usage: new GaugeMetric('disk.usage'),
+      readRate: new GaugeMetric('disk.readRate'),
+      writeRate: new GaugeMetric('disk.writeRate')
+    };
+    
+    this.network = {
+      bytesIn: new GaugeMetric('network.bytesIn'),
+      bytesOut: new GaugeMetric('network.bytesOut'),
+      packetsIn: new GaugeMetric('network.packetsIn'),
+      packetsOut: new GaugeMetric('network.packetsOut'),
+      errors: new GaugeMetric('network.errors'),
+      connections: new GaugeMetric('network.connections')
+    };
+  }
+  
+  initialize() {
+    // Initialize all metrics
+    return true;
+  }
+  
+  updateCpuMetrics(metrics) {
+    this.cpu.usage.update(metrics.usage);
+    this.cpu.cores.update(metrics.cores);
+    this.cpu.load.update(metrics.load[0]); // 1 minute load
+    
+    return true;
+  }
+  
+  updateMemoryMetrics(metrics) {
+    this.memory.total.update(metrics.total);
+    this.memory.used.update(metrics.used);
+    this.memory.free.update(metrics.free);
+    this.memory.usage.update(metrics.usage);
+    
+    return true;
+  }
+  
+  updateDiskMetrics(metrics) {
+    this.disk.total.update(metrics.total);
+    this.disk.used.update(metrics.used);
+    this.disk.free.update(metrics.free);
+    this.disk.usage.update(metrics.usage);
+    this.disk.readRate.update(metrics.readRate);
+    this.disk.writeRate.update(metrics.writeRate);
+    
+    return true;
+  }
+  
+  updateNetworkMetrics(metrics) {
+    // Use first interface for now
+    if (metrics.interfaces && metrics.interfaces.length > 0) {
+      const networkInterface = metrics.interfaces[0];
+      
+      this.network.bytesIn.update(networkInterface.bytesIn);
+      this.network.bytesOut.update(networkInterface.bytesOut);
+      this.network.packetsIn.update(networkInterface.packetsIn);
+      this.network.packetsOut.update(networkInterface.packetsOut);
+      this.network.errors.update(networkInterface.errors);
+    }
+    
+    this.network.connections.update(metrics.connections);
+    
+    return true;
+  }
+  
+  getTimeSeries(startTime, endTime, resolution = 'medium') {
+    return {
+      cpu: {
+        usage: this.cpu.usage.getTimeSeries(startTime, endTime, resolution),
+        cores: this.cpu.cores.getTimeSeries(startTime, endTime, resolution),
+        load: this.cpu.load.getTimeSeries(startTime, endTime, resolution)
+      },
+      memory: {
+        total: this.memory.total.getTimeSeries(startTime, endTime, resolution),
+        used: this.memory.used.getTimeSeries(startTime, endTime, resolution),
+        free: this.memory.free.getTimeSeries(startTime, endTime, resolution),
+        usage: this.memory.usage.getTimeSeries(startTime, endTime, resolution)
+      },
+      disk: {
+        total: this.disk.total.getTimeSeries(startTime, endTime, resolution),
+        used: this.disk.used.getTimeSeries(startTime, endTime, resolution),
+        free: this.disk.free.getTimeSeries(startTime, endTime, resolution),
+        usage: this.disk.usage.getTimeSeries(startTime, endTime, resolution),
+        readRate: this.disk.readRate.getTimeSeries(startTime, endTime, resolution),
+        writeRate: this.disk.writeRate.getTimeSeries(startTime, endTime, resolution)
+      },
+      network: {
+        bytesIn: this.network.bytesIn.getTimeSeries(startTime, endTime, resolution),
+        bytesOut: this.network.bytesOut.getTimeSeries(startTime, endTime, resolution),
+        packetsIn: this.network.packetsIn.getTimeSeries(startTime, endTime, resolution),
+        packetsOut: this.network.packetsOut.getTimeSeries(startTime, endTime, resolution),
+        errors: this.network.errors.getTimeSeries(startTime, endTime, resolution),
+        connections: this.network.connections.getTimeSeries(startTime, endTime, resolution)
+      }
+    };
+  }
+}
+
+class NotificationSystem {
+  constructor(config = {}) {
+    this.config = {
+      enabled: config.enabled !== false,
+      channels: config.channels || ['console', 'log'],
+      ...config
+    };
+    
+    this.handlers = new Map();
+    
+    // Register default handlers
+    this.registerHandler('console', this.consoleNotificationHandler.bind(this));
+    this.registerHandler('log', this.logNotificationHandler.bind(this));
+  }
+  
+  async initialize() {
+    // Initialize notification system
+    return true;
+  }
+  
+  registerHandler(channel, handler) {
+    if (typeof handler !== 'function') {
+      throw new Error(`Handler for channel ${channel} must be a function`);
+    }
+    
+    this.handlers.set(channel, handler);
+    return true;
+  }
+  
+  async sendNotification(notification) {
+    if (!this.config.enabled) {
+      return false;
+    }
+    
+    // Validate notification
+    if (!notification.type || !notification.message) {
+      throw new Error("Notification must have a type and message");
+    }
+    
+    // Add timestamp if not present
+    if (!notification.timestamp) {
+      notification.timestamp = Date.now();
+    }
+    
+    // Send notification to all configured channels
+    const results = [];
+    
+    for (const channel of this.config.channels) {
+      try {
+        const handler = this.handlers.get(channel);
+        
+        if (!handler) {
+          continue;
+        }
+        
+        const result = await handler(notification);
+        results.push({ channel, success: true, result });
+      } catch (error) {
+        results.push({ channel, success: false, error: error.message });
+      }
+    }
+    
+    return {
+      success: results.some(r => r.success),
+      results
+    };
+  }
+  
+  async consoleNotificationHandler(notification) {
+    // Output notification to console
+    const timestamp = new Date(notification.timestamp).toISOString();
+    const severity = notification.severity || 'info';
+    
+    console.log(`[${timestamp}] [${severity.toUpperCase()}] ${notification.title || notification.type}: ${notification.message}`);
+    
+    return true;
+  }
+  
+  async logNotificationHandler(notification) {
+    // This would normally log to a file or database
+    // Simplified implementation for demonstration
+    return true;
+  }
+}
+
+class MonitoringDashboard {
+  constructor(monitor) {
+    this.monitor = monitor;
+    this.isInitialized = false;
+  }
+  
+  async initialize() {
+    // Initialize dashboard
+    this.isInitialized = true;
+    return true;
+  }
+  
+  async render() {
+    // This would normally render a dashboard UI
+    // Simplified implementation for demonstration
+    return {
+      systemStatus: this.monitor.getSystemStatus(),
+      metrics: this.monitor.getMetricsData({
+        duration: 3600000 // Last hour
+      }),
+      alerts: this.monitor.getAlerts({
+        limit: 10
+      }),
+      logs: this.monitor.getLogs({
+        limit: 100
+      })
+    };
+  }
+}
+
+// Helper classes for logging (same as in other components)
+class LogSystem {
+  constructor(level = 'info') {
+    this.level = level;
+    this.levels = {
+      debug: 0,
+      info: 1,
+      warn: 2,
+      error: 3
+    };
+  }
+  
+  shouldLog(level) {
+    return this.levels[level] >= this.levels[this.level];
+  }
+  
+  debug(message) {
+    if (this.shouldLog('debug')) {
+      console.log(`[DEBUG] ${message}`);
+    }
+  }
+  
+  info(message) {
+    if (this.shouldLog('info')) {
+      console.log(`[INFO] ${message}`);
+    }
+  }
+  
+  warn(message) {
+    if (this.shouldLog('warn')) {
+      console.warn(`[WARN] ${message}`);
+    }
+  }
+  
+  error(message) {
+    if (this.shouldLog('error')) {
+      console.error(`[ERROR] ${message}`);
+    }
+  }
+}
+
+module.exports = SystemMonitor;
+```

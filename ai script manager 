@@ -1,0 +1,120 @@
+// =========================================================
+// 🚀 ONE SCRIPT - Optimized Central AI System (EdgeNativeUMaaS)
+// =========================================================
+
+import fs from 'fs/promises';
+import path from 'path';
+import crypto from 'crypto';
+import EventEmitter from 'events';
+
+// Configuration
+const CONFIG = {
+  scriptDirs: ['./blockchain', './ai', './security', './transactions', './edge', './ui'],
+  outputDir: './integrated',
+  logsDir: './logs',
+  backupDir: './backups',
+  updateInterval: 60000,
+  optimizationInterval: 3600000,
+  logMaxSize: 10485760,
+  debug: true
+};
+
+// =========================================================
+// Core System Initialization
+// =========================================================
+
+class OneScript {
+  constructor() {
+    this.scripts = new Map();
+    this.scriptHashes = new Map();
+    this.logs = { system: [], kpi: [], blockchain: [], debug: [] };
+    this.metrics = { scriptsLoaded: 0, duplicatesRemoved: 0, optimizations: 0, execTime: 0 };
+    this.init();
+  }
+
+  async init() {
+    console.log('🚀 Initializing One Script System...');
+    await this.setupDirectories();
+    await this.loadScripts();
+    setInterval(() => this.checkUpdates(), CONFIG.updateInterval);
+    setInterval(() => this.aiOptimize(), CONFIG.optimizationInterval);
+    await this.executeScripts();
+    this.log('system', 'System initialized successfully');
+  }
+
+  async setupDirs(dirs) {
+    for (const dir of dirs) await fs.mkdir(dir, { recursive: true });
+  }
+
+  async executeScripts() {
+    const start = Date.now();
+    for (const [path, script] of this.scripts.entries()) {
+      if (script.isDuplicate) continue;
+      this.log('system', `Executing ${path.basename(path)}`);
+      await this.simulateExec(script);
+    }
+    this.metrics.execTime = Date.now() - start;
+    this.logKPIs();
+  }
+
+  async simulateExec(script) {
+    return new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  async deduplicate() {
+    const hashMap = {};
+    for (const [path, data] of this.scripts.entries()) {
+      if (this.scriptHashes.has(data.hash)) {
+        data.isDuplicate = true;
+        this.metrics.duplicatesRemoved++;
+      } else this.scriptHashes.set(script.hash, path);
+    }
+    this.log('system', `${this.metrics.duplicatesRemoved} duplicates removed`);
+  }
+
+  async aiOptimize() {
+    this.log('system', 'Performing AI optimization');
+    this.metrics.optimizations++;
+    this.logKPIs();
+  }
+
+  logKPIs() {
+    const entry = JSON.stringify({ ...this.metrics, timestamp: Date.now() });
+    this.log('kpi', entry);
+  }
+
+  log(type, msg) {
+    const entry = `[${new Date().toISOString()}] ${msg}`;
+    this.logs[type].push(entry);
+    fs.appendFile(`${this.logsDir}/${type}.log`, entry + '\n');
+  }
+
+  checkLogs(type) {
+    fs.stat(`${this.logsDir}/${type}.log`).then(stats => {
+      if (stats.size > CONFIG.logSize) this.rotateLog(type);
+    });
+  }
+
+  async rotateLog(type) {
+    const ts = new Date().toISOString().replace(/:/g, '-');
+    await fs.rename(`${this.logsDir}/${type}.log`, `${this.logsDir}/${type}-${ts}.log`);
+    this.log('system', `${type} log rotated`);
+  }
+
+  logKPIs() {
+    const data = {
+      timestamp: Date.now(),
+      scriptsLoaded: this.metrics.scriptsLoaded,
+      duplicatesRemoved: this.metrics.duplicatesRemoved,
+      optimizationsApplied: this.metrics.optimizations,
+      execTime: this.metrics.execTime
+    };
+    this.log('kpi', JSON.stringify(data));
+  }
+}
+
+// =========================================================
+// 🟢 Execute Main Script
+// =========================================================
+
+new OneScript();
