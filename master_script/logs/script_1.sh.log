@@ -1,8 +1,0 @@
-./structured_codebase/core_infra/script_1.sh: line 2: sender:: command not found
-./structured_codebase/core_infra/script_1.sh: line 3: recipient:: command not found
-./structured_codebase/core_infra/script_1.sh: line 4: amount:: command not found
-./structured_codebase/core_infra/script_1.sh: line 5: fee:: command not found
-./structured_codebase/core_infra/script_1.sh: line 6: type:: command not found
-./structured_codebase/core_infra/script_1.sh: line 7: metadata:: command not found
-./structured_codebase/core_infra/script_1.sh: line 8: syntax error near unexpected token `}'
-./structured_codebase/core_infra/script_1.sh: line 8: `});/**'
