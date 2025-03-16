@@ -1,0 +1,1 @@
+WORKFLOW_QUEUE = []  # Ensure it is defined before use
